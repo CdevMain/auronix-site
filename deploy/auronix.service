@@ -1,0 +1,27 @@
+# /etc/systemd/system/auronix.service
+# sudo systemctl daemon-reload && sudo systemctl enable --now auronix
+# Logs: journalctl -u auronix -f
+
+[Unit]
+Description=Auronix site (vendas, webhook Cakto, onboarding)
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/auronix
+EnvironmentFile=/var/www/auronix/.env
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node src/server.js
+Restart=always
+RestartSec=3
+
+# Endurecimento
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+ReadWritePaths=/var/www/auronix/data
+
+[Install]
+WantedBy=multi-user.target

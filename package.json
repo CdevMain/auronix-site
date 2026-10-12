@@ -1,0 +1,21 @@
+{
+  "name": "auronix-site",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Site de vendas da Auronix com webhook da Cakto, onboarding e painel admin",
+  "main": "src/server.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=22.9"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env src/server.js",
+    "dev": "node --watch --env-file-if-exists=.env src/server.js",
+    "test:webhook": "node scripts/simular-webhook.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^13.0.3",
+    "express": "^5.3.0",
+    "nodemailer": "^10.1.0"
+  }
+}

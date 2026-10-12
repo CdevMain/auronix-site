@@ -1,0 +1,59 @@
+{
+  "_leia": "Edite nomes, preços, itens e links. 'checkoutUrl' é o link de checkout da oferta na Cakto. 'caktoOfferIds' e 'caktoProductIds' ligam cada venda recebida pelo webhook ao plano certo: copie os IDs da oferta/produto no painel da Cakto (ou do primeiro webhook, que aparece em /admin). Reinicie o serviço depois de editar.",
+  "plans": [
+    {
+      "id": "essencial",
+      "name": "Essencial",
+      "price": "[PREÇO]",
+      "period": "/mês",
+      "summary": "Para quem quer parar de perder mensagens fora do horário.",
+      "features": [
+        "1 número de WhatsApp",
+        "Agente de atendimento treinado no seu negócio",
+        "Responde dúvidas, preços e horários 24 horas",
+        "Passa a conversa para você quando precisar",
+        "Ajustes mensais no agente"
+      ],
+      "checkoutUrl": "https://pay.cakto.com.br/SEU-LINK-ESSENCIAL",
+      "caktoOfferIds": [],
+      "caktoProductIds": [],
+      "highlight": false
+    },
+    {
+      "id": "pro",
+      "name": "Pro",
+      "price": "[PREÇO]",
+      "period": "/mês",
+      "summary": "Para quem vende pelo WhatsApp e quer fechar mais pedidos.",
+      "features": [
+        "Tudo do Essencial",
+        "Apresenta produtos e envia links de pagamento",
+        "Agenda horários e envia lembretes",
+        "Qualifica contatos antes de chegar em você",
+        "Ajustes semanais no agente"
+      ],
+      "checkoutUrl": "https://pay.cakto.com.br/SEU-LINK-PRO",
+      "caktoOfferIds": [],
+      "caktoProductIds": [],
+      "highlight": true
+    },
+    {
+      "id": "empresa",
+      "name": "Empresa",
+      "price": "[PREÇO]",
+      "period": "/mês",
+      "summary": "Para equipes com vários atendentes e processos próprios.",
+      "features": [
+        "Tudo do Pro",
+        "Até [N] números de WhatsApp",
+        "Integração com sua agenda, planilha ou CRM",
+        "Fluxos sob medida para suporte e cobrança",
+        "Atendimento prioritário"
+      ],
+      "checkoutUrl": "https://pay.cakto.com.br/SEU-LINK-EMPRESA",
+      "caktoOfferIds": [],
+      "caktoProductIds": [],
+      "highlight": false
+    }
+  ]
+}
