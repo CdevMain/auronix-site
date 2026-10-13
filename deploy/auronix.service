@@ -13,7 +13,8 @@ Group=www-data
 WorkingDirectory=/var/www/auronix
 EnvironmentFile=/var/www/auronix/.env
 Environment=NODE_ENV=production
-ExecStart=/usr/bin/node src/server.js
+# Node 22 próprio do site em /opt/node22 (não mexe no Node do sistema usado por outros apps)
+ExecStart=/opt/node22/bin/node src/server.js
 Restart=always
 RestartSec=3
 

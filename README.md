@@ -53,15 +53,21 @@ No DNS de `cdev.com.br`, crie um registro **A** `auronix` apontando para o IP do
 ## 2. Instalar no VPS
 
 ```bash
-# Node 22.13 ou mais novo (confira com: node -v)
-curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt install -y nodejs
+# Node 22 só para este site, em /opt/node22. O Node do sistema (usado por outros apps) não muda.
+cd /tmp
+V=$(curl -fsSL https://nodejs.org/dist/latest-v22.x/SHASUMS256.txt | grep -o 'node-v22[0-9.]*-linux-x64.tar.xz' | head -1)
+curl -fsSLO https://nodejs.org/dist/latest-v22.x/$V
+curl -fsSL https://nodejs.org/dist/latest-v22.x/SHASUMS256.txt | grep " $V\$" | sha256sum -c -
+sudo mkdir -p /opt/node22 && sudo tar -xJf $V -C /opt/node22 --strip-components=1
+/opt/node22/bin/node -v
+export PATH=/opt/node22/bin:$PATH      # para o npm abaixo usar o Node 22
 
 sudo mkdir -p /var/www/auronix && sudo chown $USER: /var/www/auronix
 git clone git@github.com:CdevMain/auronix-site.git /var/www/auronix   # ou envie a pasta por scp
 cd /var/www/auronix
 npm ci --omit=dev
 
-cp .env.example .env && nano .env      # chave do webhook, ADMIN_PATH, senha do painel e RESEND_API_KEY
+cp .env.example .env && nano .env      # copie os valores do local.env do PC (PUBLIC_URL = https://auronix.cdev.com.br)
 mkdir -p data && sudo chown -R www-data: data   # guarda só o endereço do painel gerado automaticamente
 sudo chmod 640 .env && sudo chown $USER:www-data .env
 
@@ -77,14 +83,14 @@ sudo certbot --nginx -d auronix.cdev.com.br
 
 As páginas `public/erros/50x.html` aparecem quando o Node está parado. Se mudar o visual, gere de novo com `node scripts/gerar-paginas-erro.js`.
 
-Se o `node` não estiver em `/usr/bin/node` (confira com `which node`), ajuste o `ExecStart` no `auronix.service`.
+O serviço usa `/opt/node22/bin/node` (veja `ExecStart` no `auronix.service`).
 
 Para atualizar depois: `bash deploy/atualizar.sh`.
 
 ## 3. Configurar a Cakto
 
-1. **Planos:** crie o produto de assinatura com uma oferta para cada plano (Essencial, Pro, Empresa).
-2. **Links de checkout:** em `plans.json`, troque `checkoutUrl` pelo link de cada oferta e preencha `price`, `features` etc. Depois rode `sudo systemctl restart auronix`.
+1. **Planos:** o produto de assinatura tem uma oferta para cada plano (Start, Pro, Business).
+2. **Links de checkout:** já estão em `plans.json` (`checkoutUrl`). Se mudar algum, edite, faça o push e rode `bash deploy/atualizar.sh`.
 3. **Página de obrigado:** em cada oferta, defina o redirecionamento pós-compra para `https://auronix.cdev.com.br/obrigado`.
 4. **Webhook:** em *Integrações > Webhooks*, crie um webhook com:
    - URL: `https://auronix.cdev.com.br/webhooks/cakto`
