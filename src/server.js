@@ -3,11 +3,12 @@ const express = require('express');
 const config = require('./config');
 const db = require('./db');
 const mail = require('./mail');
-const { handleWebhook, sendOnboardingEmail, safeEqual } = require('./cakto');
+const { handleWebhook, sendOnboardingEmail } = require('./cakto');
 const { renderLanding } = require('./landing');
+const pages = require('./pages');
 const onboarding = require('./onboarding');
-const admin = require('./admin');
-const { esc, page } = require('./html');
+const adminRoutes = require('./admin-routes');
+const { errorPage } = require('./html');
 
 const app = express();
 app.disable('x-powered-by');
@@ -17,105 +18,117 @@ app.use((req, res, next) => {
   res.set({
     'X-Content-Type-Options': 'nosniff',
     'X-Frame-Options': 'DENY',
-    // Não vaza o token do onboarding para outros sites
-    'Referrer-Policy': 'no-referrer',
+    // Não vaza o token do onboarding nem o endereço do painel para outros sites
+    'Referrer-Policy': 'same-origin',
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
   });
   next();
 });
 
-app.use(express.static(path.join(config.root, 'public'), { maxAge: '7d', index: false }));
+// Arquivos estáticos: os links levam ?v=<versão>, então dá para guardar em cache por bastante tempo
+app.use(express.static(path.join(config.root, 'public'), { maxAge: '30d', index: false }));
 
-// ---------- Site ----------
-let landingCache = null;
-app.get('/', (req, res) => {
-  landingCache ??= renderLanding();
-  res.type('html').send(landingCache);
-});
-
+// ---------- site ----------
+app.get('/', (req, res) => res.type('html').send(renderLanding()));
+app.get('/contato', (req, res) => res.type('html').send(pages.renderContato({ sent: req.query.enviado === '1' })));
+app.get('/privacidade', (req, res) => res.type('html').send(pages.renderPrivacidade()));
+app.get('/termos', (req, res) => res.type('html').send(pages.renderTermos()));
+app.get('/cookies', (req, res) => res.type('html').send(pages.renderCookies()));
+app.get('/transparencia', (req, res) => res.type('html').send(pages.renderTransparencia()));
+app.get('/contrato', (req, res) => res.type('html').send(pages.renderContratoModelo()));
+app.get('/obrigado', (req, res) => res.type('html').send(pages.renderObrigado({ sent: req.query.enviado === '1' })));
 app.get('/health', (req, res) => res.json({ ok: true }));
-
-// ---------- Webhook da Cakto ----------
-app.post('/webhooks/cakto', express.json({ limit: '1mb' }), (req, res) => {
-  try {
-    const { status, result } = handleWebhook(req.body);
-    console.log(`[webhook] ${req.body?.event || '?'} ${status} ${result}`);
-    res.status(status).json({ ok: status === 200, result });
-  } catch (err) {
-    console.error('[webhook] erro', err);
-    res.status(500).json({ ok: false });
-  }
+app.get('/robots.txt', (req, res) =>
+  res.type('text/plain').send(`User-agent: *\nDisallow: /onboarding/\nDisallow: /contrato/\nDisallow: /obrigado\nSitemap: ${config.publicUrl}/sitemap.xml\n`)
+);
+app.get('/sitemap.xml', (req, res) => {
+  const urls = ['/', '/contato', '/transparencia', '/contrato', '/privacidade', '/cookies', '/termos'].map((u) => `<url><loc>${config.publicUrl}${u}</loc></url>`).join('');
+  res.type('application/xml').send(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${urls}</urlset>`);
 });
 
-// ---------- Pós-compra ----------
+// Limite simples por IP
+function limiter(max, windowMs) {
+  const hits = new Map();
+  return (ip) => {
+    const now = Date.now();
+    const list = (hits.get(ip) || []).filter((t) => now - t < windowMs);
+    list.push(now);
+    hits.set(ip, list);
+    return list.length > max;
+  };
+}
+const contactLimited = limiter(5, 60 * 60 * 1000);
+const resendLimited = limiter(5, 15 * 60 * 1000);
 const form = express.urlencoded({ extended: true, limit: '200kb' });
+const validEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
 
-function obrigadoPage({ sent } = {}) {
-  return page({
-    title: 'Pagamento recebido | Auronix',
-    body: `<h1>Obrigado por assinar a Auronix</h1>
-<p class="lede">Assim que a Cakto confirmar o pagamento, enviamos para o e-mail da compra o link do onboarding. É por ele que você conta como o seu negócio funciona para treinarmos o seu agente.</p>
-<p class="lede">No Pix e no cartão a confirmação costuma ser imediata. No boleto, pode levar até 3 dias úteis.</p>
-<h2 class="sub" id="reenviar">Não recebeu o e-mail?</h2>
-<p class="lede">Confira a caixa de spam. Se não estiver lá, digite o e-mail usado na compra e enviamos o link de novo.</p>
-${sent ? '<div class="notice notice--solid" role="status">Se houver uma assinatura ativa com esse e-mail, o link chega em alguns minutos.</div>' : ''}
-<form class="form inline-form" method="post" action="/reenviar">
-  <label class="sr-only" for="f-email">E-mail usado na compra</label>
-  <input type="email" id="f-email" name="email" required autocomplete="email" placeholder="seu@email.com" aria-label="E-mail usado na compra">
-  <button class="btn btn--dark" type="submit">Reenviar link</button>
-</form>
-<p class="lede" style="margin-top:40px">Precisa de ajuda? Escreva para <a class="link" href="mailto:${esc(config.contactEmail)}">${esc(config.contactEmail)}</a>.</p>`,
-  });
-}
+app.post('/contato', form, async (req, res) => {
+  const b = req.body;
+  // Campo escondido: robôs preenchem, pessoas não
+  if (b.site) return res.redirect(303, '/contato?enviado=1');
+  const values = {
+    nome: String(b.nome || '').trim().slice(0, 200),
+    email: String(b.email || '').trim().toLowerCase().slice(0, 200),
+    telefone: String(b.telefone || '').trim().slice(0, 40),
+    empresa: String(b.empresa || '').trim().slice(0, 200),
+    mensagem: String(b.mensagem || '').trim().slice(0, 5000),
+  };
+  const errors = [];
+  if (!values.nome) errors.push('nome');
+  if (!validEmail(values.email)) errors.push('e-mail válido');
+  if (values.mensagem.length < 5) errors.push('mensagem');
+  if (errors.length) return res.status(422).type('html').send(pages.renderContato({ errors, values }));
+  if (contactLimited(req.ip)) return res.status(429).type('html').send(errorPage(429, { action: { href: '/contato', label: 'Voltar ao contato' } }));
+  await db.run(`INSERT INTO contact_messages (name, email, phone, company, message) VALUES (?, ?, ?, ?, ?)`, [
+    values.nome, values.email, values.telefone || null, values.empresa || null, values.mensagem,
+  ]);
+  mail.notifyAdmin(
+    `Nova mensagem de ${values.nome}`,
+    `${values.nome} <${values.email}>\n${values.telefone ? 'WhatsApp: ' + values.telefone + '\n' : ''}${values.empresa ? 'Empresa: ' + values.empresa + '\n' : ''}\n${values.mensagem}\n\n${config.publicUrl}${config.adminPath}/mensagens`
+  );
+  res.redirect(303, '/contato?enviado=1');
+});
 
-app.get('/obrigado', (req, res) => res.type('html').send(obrigadoPage({ sent: req.query.enviado === '1' })));
+// ---------- webhook da Cakto ----------
+app.post('/webhooks/cakto', express.json({ limit: '1mb' }), async (req, res) => {
+  const { status, result } = await handleWebhook(req.body);
+  console.log(`[webhook] ${req.body?.event || '?'} ${status} ${result}`);
+  res.status(status).json({ ok: status === 200, result });
+});
 
-// Limite simples: 5 pedidos de reenvio por IP a cada 15 min
-const resendHits = new Map();
-function rateLimited(ip) {
-  const now = Date.now();
-  const hits = (resendHits.get(ip) || []).filter((t) => now - t < 15 * 60 * 1000);
-  hits.push(now);
-  resendHits.set(ip, hits);
-  return hits.length > 5;
-}
-
-const findActiveByEmail = db.prepare(`SELECT * FROM customers WHERE email = ? AND status = 'ativo'`);
-app.post('/reenviar', form, (req, res) => {
+// ---------- pós-compra ----------
+app.post('/reenviar', form, async (req, res) => {
   const email = String(req.body.email || '').trim().toLowerCase();
-  if (!rateLimited(req.ip) && email) {
-    const c = findActiveByEmail.get(email);
+  if (!resendLimited(req.ip) && email) {
+    const c = await db.one(`SELECT * FROM customers WHERE email = ? AND status IN ('ativo', 'atrasado')`, [email]);
     if (c) sendOnboardingEmail(c).catch((e) => console.error('[reenviar]', e.message));
   }
   // Mesma resposta sempre, para não revelar quem é cliente
   res.redirect(303, '/obrigado?enviado=1#reenviar');
 });
 
-// ---------- Onboarding ----------
-const byToken = db.prepare(`SELECT * FROM customers WHERE onboarding_token = ?`);
-const getOnboarding = db.prepare(`SELECT * FROM onboardings WHERE customer_id = ?`);
-const saveOnboarding = db.prepare(`
-INSERT INTO onboardings (customer_id, answers) VALUES (?, ?)
-ON CONFLICT(customer_id) DO UPDATE SET answers = excluded.answers, updated_at = datetime('now')`);
+// ---------- onboarding ----------
+const getOnboarding = (customerId) => db.one(`SELECT * FROM onboardings WHERE customer_id = ?`, [customerId]);
 
-function loadByToken(req, res) {
+async function loadByToken(req, res) {
   const token = String(req.params.token || '');
-  const c = token.length >= 20 ? byToken.get(token) : null;
+  const c = token.length >= 20 ? await db.one(`SELECT * FROM customers WHERE onboarding_token = ?`, [token]) : null;
   if (!c) {
     res.status(404).type('html').send(onboarding.renderInvalid('nao_encontrado'));
     return null;
   }
-  if (c.status !== 'ativo') {
+  if (!['ativo', 'atrasado', 'pendente'].includes(c.status)) {
     res.status(403).type('html').send(onboarding.renderInvalid('inativo'));
     return null;
   }
   return c;
 }
 
-app.get('/onboarding/:token', (req, res) => {
-  const c = loadByToken(req, res);
+app.get('/onboarding/:token', async (req, res) => {
+  const c = await loadByToken(req, res);
   if (!c) return;
-  const row = getOnboarding.get(c.id);
-  res.type('html').send(
+  const row = await getOnboarding(c.id);
+  res.set('X-Robots-Tag', 'noindex').type('html').send(
     onboarding.renderForm({
       token: c.onboarding_token,
       customer: c,
@@ -126,87 +139,98 @@ app.get('/onboarding/:token', (req, res) => {
   );
 });
 
-app.post('/onboarding/:token', form, (req, res) => {
-  const c = loadByToken(req, res);
+app.post('/onboarding/:token', form, async (req, res) => {
+  const c = await loadByToken(req, res);
   if (!c) return;
   const answers = onboarding.clean(req.body);
   const errors = onboarding.validate(answers);
   if (errors.length) {
     return res.status(422).type('html').send(onboarding.renderForm({ token: c.onboarding_token, customer: c, answers, errors }));
   }
-  const first = !getOnboarding.get(c.id);
-  saveOnboarding.run(c.id, JSON.stringify(answers));
-  mail.notifyAdmin(
-    `${first ? 'Onboarding preenchido' : 'Onboarding atualizado'}: ${answers.empresa}`,
-    `${c.name || ''} <${c.email}>\nPlano: ${c.plan_name || '-'}\n\n${config.publicUrl}/admin/clientes/${c.id}`
+  const first = !(await getOnboarding(c.id));
+  await db.run(
+    `INSERT INTO onboardings (customer_id, answers) VALUES (?, ?)
+     ON CONFLICT (customer_id) DO UPDATE SET answers = excluded.answers, updated_at = now()`,
+    [c.id, JSON.stringify(answers)]
   );
+  await db.log(c.id, 'onboarding', first ? `Onboarding preenchido (${answers.empresa})` : 'Onboarding atualizado pelo cliente');
+  if (first) {
+    if (c.stage === 'aguardando_onboarding') await db.run(`UPDATE customers SET stage = 'onboarding_recebido' WHERE id = ?`, [c.id]);
+    mail.sendOnboardingReceived(c, `${config.publicUrl}/onboarding/${c.onboarding_token}`);
+  }
+  if (!c.is_test) {
+    mail.notifyAdmin(
+      `${first ? 'Onboarding preenchido' : 'Onboarding atualizado'}: ${answers.empresa}`,
+      `${c.name || ''} <${c.email}>\nPlano: ${c.plan_name || '-'}\n\n${config.publicUrl}${config.adminPath}/clientes/${c.id}`
+    );
+  }
   res.redirect(303, `/onboarding/${c.onboarding_token}?salvo=1`);
 });
 
-// ---------- Admin ----------
-function basicAuth(req, res, next) {
-  const pass = config.admin.pass;
-  if (!pass || pass === 'troque-esta-senha') return res.status(503).send('Defina ADMIN_PASS no .env para usar o painel.');
-  const [scheme, encoded] = String(req.headers.authorization || '').split(' ');
-  if (scheme === 'Basic' && encoded) {
-    const [user, ...rest] = Buffer.from(encoded, 'base64').toString().split(':');
-    if (safeEqual(user, config.admin.user) && safeEqual(rest.join(':'), pass)) return next();
+// ---------- contrato do cliente ----------
+const contract = require('./contract');
+const { renderContractPage } = require('./contract-page');
+const customerById = (id) => db.one(`SELECT * FROM customers WHERE id = ?`, [id]);
+async function loadContract(req, res) {
+  const token = String(req.params.token || '');
+  const c = token.length >= 20 ? await contract.byToken(token) : null;
+  if (!c) {
+    res.status(404).type('html').send(errorPage(404, { message: 'Esse link de contrato não existe. Confira o e-mail que enviamos ou fale com a gente.' }));
+    return null;
   }
-  res.set('WWW-Authenticate', 'Basic realm="Auronix admin", charset="UTF-8"').status(401).send('Login necessário.');
+  return c;
 }
-
-// Bloqueia POST vindo de outro site (o navegador reenviaria o login automaticamente)
-function sameOrigin(req, res, next) {
-  const origin = req.headers.origin || req.headers.referer || '';
-  try {
-    if (new URL(origin).host === req.headers.host) return next();
-  } catch {}
-  res.status(403).send('Origem inválida.');
-}
-
-app.use('/admin', basicAuth, (req, res, next) => {
-  res.set('Cache-Control', 'no-store');
-  next();
+app.get('/contrato/:token', async (req, res) => {
+  const c = await loadContract(req, res);
+  if (!c) return;
+  if (c.status !== 'cancelado') await contract.markViewed(c);
+  const customer = (await customerById(c.customer_id)) || {};
+  res.set('X-Robots-Tag', 'noindex').type('html').send(renderContractPage(await contract.byToken(c.token), { values: { nome: customer.name || '', email: customer.email || '' } }));
 });
-
-app.get('/admin', (req, res) => {
-  const customers = db
-    .prepare(`SELECT c.*, o.updated_at AS onboarding_at FROM customers c LEFT JOIN onboardings o ON o.customer_id = c.id ORDER BY c.created_at DESC, c.id DESC LIMIT 500`)
-    .all();
-  const counts = db
-    .prepare(`SELECT COUNT(*) total, SUM(status='ativo') ativos,
-              SUM(status='ativo' AND id NOT IN (SELECT customer_id FROM onboardings)) pendentes FROM customers`)
-    .get();
-  const events = db.prepare(`SELECT * FROM webhook_events ORDER BY id DESC LIMIT 30`).all();
-  res.type('html').send(admin.renderList({ customers, counts: { total: counts.total || 0, ativos: counts.ativos || 0, pendentes: counts.pendentes || 0 }, events }));
-});
-
-app.get('/admin/clientes/:id', (req, res) => {
-  const c = db.prepare(`SELECT * FROM customers WHERE id = ?`).get(Number(req.params.id));
-  if (!c) return res.status(404).send('Cliente não encontrado.');
-  const events = db.prepare(`SELECT * FROM webhook_events WHERE email = ? ORDER BY id DESC LIMIT 50`).all(c.email);
-  const flash = { enviado: 'Link enviado por e-mail.', semsmtp: 'SMTP não configurado: copie o link acima e envie ao cliente.' }[req.query.msg];
-  res.type('html').send(admin.renderCustomer({ c, onboarding: getOnboarding.get(c.id), events, flash }));
-});
-
-app.post('/admin/clientes/:id/reenviar', sameOrigin, async (req, res) => {
-  const c = db.prepare(`SELECT * FROM customers WHERE id = ?`).get(Number(req.params.id));
-  if (!c) return res.status(404).send('Cliente não encontrado.');
-  try {
-    const sent = await sendOnboardingEmail(c);
-    res.redirect(303, `/admin/clientes/${c.id}?msg=${sent ? 'enviado' : 'semsmtp'}`);
-  } catch (e) {
-    res.status(500).send(`Falha ao enviar: ${esc(e.message)}`);
+app.post('/contrato/:token', form, async (req, res) => {
+  const c = await loadContract(req, res);
+  if (!c) return;
+  if (c.status === 'aceito' || c.status === 'cancelado') return res.redirect(303, `/contrato/${c.token}`);
+  const values = { nome: req.body.nome, documento: req.body.documento, email: req.body.email, aceite: req.body.aceite };
+  const r = await contract.accept(c, { name: values.nome, doc: values.documento, email: values.email, agree: values.aceite }, req);
+  if (!r.ok) return res.status(422).type('html').send(renderContractPage(c, { errors: r.errors, values }));
+  const customer = await customerById(c.customer_id);
+  if (customer) {
+    mail.sendContractAccepted(customer, r.contract, contract.link(r.contract));
+    if (!customer.is_test) mail.notifyAdmin(`Contrato aceito: ${customer.name || customer.email}`, `${r.contract.accepted_name} (${r.contract.accepted_doc}) aceitou o contrato.\n\n${config.publicUrl}${config.adminPath}/clientes/${customer.id}`);
   }
+  res.redirect(303, `/contrato/${c.token}`);
 });
 
-// ---------- 404 ----------
+// ---------- painel (endereço secreto) ----------
+app.use(config.adminPath, adminRoutes);
+
+// ---------- erros ----------
 app.use((req, res) => {
-  res.status(404).type('html').send(
-    page({ title: 'Página não encontrada | Auronix', body: '<h1>Página não encontrada</h1><p class="lede">O endereço não existe.</p><p style="margin-top:32px"><a class="btn btn--dark" href="/">Ir para o início</a></p>' })
-  );
+  res.status(404).type('html').send(errorPage(404));
 });
 
-app.listen(config.port, '127.0.0.1', () => {
-  console.log(`Auronix rodando em http://127.0.0.1:${config.port} (público: ${config.publicUrl})`);
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  const status = err.status || err.statusCode || 500;
+  const known = [400, 401, 403, 404, 405, 408, 413, 415, 429].includes(status);
+  if (!known) console.error('[erro]', req.method, req.originalUrl, err);
+  if (req.path.startsWith('/webhooks/')) return res.status(known ? status : 500).json({ ok: false, result: known ? err.message : 'erro interno' });
+  res.status(known ? status : 500).type('html').send(errorPage(known ? status : 500));
 });
+
+db.init()
+  .then(() => {
+    app.listen(config.port, '127.0.0.1', () => {
+      const auth = require('./auth');
+      console.log(`Auronix rodando em http://127.0.0.1:${config.port} (público: ${config.publicUrl})`);
+      console.log(`Painel: ${config.publicUrl}${config.adminPath} (login: ${auth.mode() === 'supabase' ? 'Supabase Auth, ' + (config.adminEmails.join(', ') || 'nenhum e-mail em ADMIN_EMAILS') : 'usuário e senha do .env'})`);
+      console.log(`E-mail: ${mail.provider || 'desativado'} (remetente ${config.mailFrom})`);
+      console.log('Banco: conectado');
+    });
+  })
+  .catch((e) => {
+    console.error('[erro] Não foi possível conectar ao banco:', e.message);
+    console.error('Confira o DATABASE_URL no .env (use a conexão "Session pooler" do Supabase).');
+    process.exit(1);
+  });

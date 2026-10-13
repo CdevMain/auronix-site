@@ -22,6 +22,7 @@ NoNewPrivileges=true
 ProtectSystem=full
 PrivateTmp=true
 ReadWritePaths=/var/www/auronix/data
+# O banco fica no Supabase; a pasta data guarda só o endereço do painel gerado automaticamente
 
 [Install]
 WantedBy=multi-user.target

@@ -1,59 +1,101 @@
 {
-  "_leia": "Edite nomes, preços, itens e links. 'checkoutUrl' é o link de checkout da oferta na Cakto. 'caktoOfferIds' e 'caktoProductIds' ligam cada venda recebida pelo webhook ao plano certo: copie os IDs da oferta/produto no painel da Cakto (ou do primeiro webhook, que aparece em /admin). Reinicie o serviço depois de editar.",
+  "_leia": "Edite nomes, preços, itens e links. 'cost' é quanto cada cliente desse plano te custa por mês (usado no cálculo de lucro do painel; dá para mudar no painel também). 'regularPrice' e 'promoUntil' (AAAA-MM-DD) mostram um preço de lançamento: preencha SÓ se o preço realmente vai subir para 'regularPrice' depois dessa data. 'checkoutUrl' é o link de checkout da Cakto. 'caktoOfferIds'/'caktoProductIds' ligam cada venda do webhook ao plano. 'comparison' monta a tabela de comparação. Reinicie o serviço depois de editar.",
   "plans": [
     {
-      "id": "essencial",
-      "name": "Essencial",
-      "price": "[PREÇO]",
+      "id": "start",
+      "name": "Auronix Start",
+      "shortName": "Start",
+      "tag": "Essencial",
+      "price": "397",
       "period": "/mês",
-      "summary": "Para quem quer parar de perder mensagens fora do horário.",
+      "cost": "97",
+      "responses": 2000,
+      "regularPrice": "",
+      "promoUntil": "",
+      "summary": "Para pequenos negócios que querem automatizar o primeiro atendimento e responder clientes pelo WhatsApp.",
+      "lead": "Inclui",
       "features": [
-        "1 número de WhatsApp",
-        "Agente de atendimento treinado no seu negócio",
-        "Responde dúvidas, preços e horários 24 horas",
-        "Passa a conversa para você quando precisar",
-        "Ajustes mensais no agente"
+        "2.000 respostas do agente por mês",
+        "Agente de IA para atendimento no WhatsApp",
+        "Respostas automáticas a dúvidas frequentes",
+        "Configuração inicial do agente",
+        "Suporte padrão por e-mail ou WhatsApp",
+        "Ajustes básicos de funcionamento",
+        "Relatório mensal simplificado"
       ],
-      "checkoutUrl": "https://pay.cakto.com.br/SEU-LINK-ESSENCIAL",
-      "caktoOfferIds": [],
+      "checkoutUrl": "https://pay.cakto.com.br/8muocap_1194227",
+      "caktoOfferIds": [
+        "8muocap_1194227",
+        "8muocap"
+      ],
       "caktoProductIds": [],
       "highlight": false
     },
     {
       "id": "pro",
-      "name": "Pro",
-      "price": "[PREÇO]",
+      "name": "Auronix Pro",
+      "shortName": "Pro",
+      "tag": "Recomendado",
+      "price": "597",
       "period": "/mês",
-      "summary": "Para quem vende pelo WhatsApp e quer fechar mais pedidos.",
+      "cost": "127",
+      "responses": 8000,
+      "regularPrice": "",
+      "promoUntil": "",
+      "summary": "Para empresas em crescimento que precisam de mais volume de atendimento e acompanhamento recorrente.",
+      "lead": "Tudo do Start, mais",
       "features": [
-        "Tudo do Essencial",
-        "Apresenta produtos e envia links de pagamento",
-        "Agenda horários e envia lembretes",
-        "Qualifica contatos antes de chegar em você",
-        "Ajustes semanais no agente"
+        "8.000 respostas do agente por mês",
+        "Prioridade no atendimento de suporte",
+        "1 reunião mensal de acompanhamento, de até 30 minutos",
+        "Revisão mensal das principais dúvidas dos clientes",
+        "Ajustes de respostas e melhorias do agente",
+        "Relatório mensal de desempenho"
       ],
-      "checkoutUrl": "https://pay.cakto.com.br/SEU-LINK-PRO",
-      "caktoOfferIds": [],
+      "checkoutUrl": "https://pay.cakto.com.br/3ay3kts",
+      "caktoOfferIds": [
+        "3ay3kts"
+      ],
       "caktoProductIds": [],
       "highlight": true
     },
     {
-      "id": "empresa",
-      "name": "Empresa",
-      "price": "[PREÇO]",
+      "id": "business",
+      "name": "Auronix Business",
+      "shortName": "Business",
+      "tag": "Empresarial",
+      "price": "950",
       "period": "/mês",
-      "summary": "Para equipes com vários atendentes e processos próprios.",
+      "cost": "202",
+      "responses": 23000,
+      "regularPrice": "",
+      "promoUntil": "",
+      "summary": "Para empresas com alto volume de conversas que exigem acompanhamento dedicado e otimização contínua.",
+      "lead": "Tudo do Pro, mais",
       "features": [
-        "Tudo do Pro",
-        "Até [N] números de WhatsApp",
-        "Integração com sua agenda, planilha ou CRM",
-        "Fluxos sob medida para suporte e cobrança",
-        "Atendimento prioritário"
+        "23.000 respostas do agente por mês",
+        "Suporte prioritário",
+        "Até 2 reuniões mensais de acompanhamento, de até 45 minutos cada",
+        "Revisão e otimização avançada do agente",
+        "Análise de oportunidades para melhorar conversão e atendimento",
+        "Relatório avançado de utilização e desempenho",
+        "Acompanhamento de incidentes conforme SLA contratado"
       ],
-      "checkoutUrl": "https://pay.cakto.com.br/SEU-LINK-EMPRESA",
-      "caktoOfferIds": [],
+      "checkoutUrl": "https://pay.cakto.com.br/n9d6575",
+      "caktoOfferIds": [
+        "n9d6575"
+      ],
       "caktoProductIds": [],
       "highlight": false
     }
+  ],
+  "comparison": [
+    ["Respostas do agente por mês", "2.000", "8.000", "23.000"],
+    ["Configuração inicial", "Incluída", "Incluída", "Incluída"],
+    ["Suporte", "Padrão", "Prioritário", "Prioritário"],
+    ["Reuniões mensais", "—", "1 de 30 min", "2 de 45 min"],
+    ["Relatórios", "Básico", "Detalhado", "Avançado"],
+    ["Revisão do agente", "Básica", "Mensal", "Avançada"],
+    ["Acompanhamento estratégico", "—", "Básico", "Dedicado"]
   ]
 }
