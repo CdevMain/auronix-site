@@ -115,6 +115,21 @@ CREATE TABLE IF NOT EXISTS auronix.settings (
   value  text NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS auronix.customer_photos (
+  customer_id  bigint PRIMARY KEY REFERENCES auronix.customers(id) ON DELETE CASCADE,
+  mime         text NOT NULL,
+  data         bytea NOT NULL,
+  updated_at   timestamptz NOT NULL DEFAULT now()
+);
+
+-- Colunas adicionadas depois (db/migrations/002): foto, mapa, perfil do agente e uso de respostas
+ALTER TABLE auronix.customers ADD COLUMN IF NOT EXISTS maps_query text;
+ALTER TABLE auronix.customers ADD COLUMN IF NOT EXISTS maps_url text;
+ALTER TABLE auronix.customers ADD COLUMN IF NOT EXISTS agent_profile text;
+ALTER TABLE auronix.customers ADD COLUMN IF NOT EXISTS usage_used integer;
+ALTER TABLE auronix.customers ADD COLUMN IF NOT EXISTS usage_cycle_start date;
+ALTER TABLE auronix.customers ADD COLUMN IF NOT EXISTS usage_updated_at timestamptz;
+
 CREATE INDEX IF NOT EXISTS idx_events_email ON auronix.webhook_events(email);
 CREATE INDEX IF NOT EXISTS idx_events_order ON auronix.webhook_events(order_id);
 CREATE INDEX IF NOT EXISTS idx_activity_customer ON auronix.activity(customer_id);

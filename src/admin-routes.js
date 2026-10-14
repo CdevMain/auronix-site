@@ -10,9 +10,12 @@ const { errorPage } = require('./html');
 const V = require('./admin-views');
 const C = require('./contract');
 const { company, saveCompany, COMPANY_FIELDS } = require('./company');
+const AG = require('./agent');
+const { FIELDS, labelOf } = require('./onboarding');
 
 const router = express.Router();
 const form = express.urlencoded({ extended: true, limit: '200kb' });
+const jsonBody = express.json({ limit: '600kb' });
 const A = config.adminPath;
 const validEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
 
@@ -56,6 +59,13 @@ router.use(async (req, res, next) => {
   next();
 });
 
+// Formulários com data-ajax pedem JSON; sem JavaScript, o navegador recebe o redirecionamento de sempre
+const wantsJson = (req) => String(req.get('accept') || '').includes('application/json');
+function reply(req, res, data, redirectTo) {
+  if (wantsJson(req)) return res.status(data.ok === false && data.status ? data.status : 200).json(data);
+  res.redirect(303, redirectTo);
+}
+
 // ---------- consultas ----------
 const getCustomer = (id) => db.one(`SELECT * FROM customers WHERE id = ?`, [Number(id) || 0]);
 const customerByEmail = (email) => db.one(`SELECT * FROM customers WHERE email = ?`, [email]);
@@ -94,6 +104,9 @@ router.get('/', async (req, res) => {
       attention.push({ href: `/clientes/${c.id}`, title: who, text: 'Pagou há mais de 2 dias e não preencheu o onboarding' });
     if (c.stage === 'onboarding_recebido') attention.push({ href: `/clientes/${c.id}`, title: who, text: 'Onboarding recebido: começar a configurar o agente' });
     if (c.payment_confirmed !== 1 && ['ativo', 'pendente'].includes(c.status)) attention.push({ href: `/clientes/${c.id}`, title: who, text: 'Pagamento sem confirmação' });
+    const u = AG.usage(c);
+    if (u.known && (u.state === 'vai_estourar' || u.state === 'estourou'))
+      attention.push({ href: `/clientes/${c.id}#agente`, title: who, text: u.state === 'estourou' ? 'Respostas do plano acabaram' : `Respostas acabam em ${u.runsOutIn} ${u.runsOutIn === 1 ? 'dia' : 'dias'} no ritmo atual` });
   }
   const pendingContracts = (await db.one(
     `SELECT COUNT(*)::int AS n FROM contracts k JOIN customers c ON c.id = k.customer_id WHERE k.status IN ('enviado', 'visualizado') AND c.is_test = 0 AND k.sent_at < now() - interval '3 days'`
@@ -124,7 +137,7 @@ function listCustomers(query) {
   if (query.pagamento === 'nao') where.push('c.payment_confirmed = 0');
   if (query.pagamento === 'sem') where.push('c.payment_confirmed IS NULL');
   if (!query.testes) where.push('c.is_test = 0');
-  return db.query(`SELECT c.* FROM customers c ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY c.created_at DESC, c.id DESC LIMIT 1000`, args);
+  return db.query(`SELECT c.*, (SELECT extract(epoch FROM p.updated_at)::bigint FROM customer_photos p WHERE p.customer_id = c.id) AS photo_v FROM customers c ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY c.created_at DESC, c.id DESC LIMIT 1000`, args);
 }
 
 router.get('/clientes', async (req, res) => {
@@ -210,8 +223,15 @@ router.post('/clientes/acoes', form, async (req, res) => {
   res.redirect(303, `${A}/clientes`);
 });
 
+const photoVersion = async (id) => (await db.one(`SELECT extract(epoch FROM updated_at)::bigint AS v FROM customer_photos WHERE customer_id = ?`, [id]))?.v || null;
+const answersOf = async (id) => {
+  const o = await db.one(`SELECT * FROM onboardings WHERE customer_id = ?`, [id]);
+  return o ? { onboarding: o, answers: JSON.parse(o.answers) } : { onboarding: null, answers: null };
+};
+
 router.get('/clientes/:id', async (req, res) => {
   const c = await getCustomer(req.params.id);
+  if (c) c.photo_v = await photoVersion(c.id);
   if (!c) return res.status(404).type('html').send(errorPage(404, { message: 'Esse cliente não existe ou foi apagado.', action: { href: `${A}/clientes`, label: 'Ver clientes' } }));
   const [onboarding, events, emails, activity, contracts, naoLidas] = await Promise.all([
     db.one(`SELECT * FROM onboardings WHERE customer_id = ?`, [c.id]),
@@ -265,9 +285,137 @@ router.post('/clientes/:id/pagamento', form, async (req, res) => {
 router.post('/clientes/:id/nota', form, async (req, res) => {
   const c = await getCustomer(req.params.id);
   if (!c) return res.status(404).type('html').send(errorPage(404));
-  const text = String(req.body.texto || '').trim();
-  if (text) await db.log(c.id, 'nota', text);
-  res.redirect(303, `${A}/clientes/${c.id}?ok=nota`);
+  const text = String(req.body.texto || '').trim().slice(0, 2000);
+  if (!text) return reply(req, res, { ok: false, message: 'Escreva a nota antes de salvar.' }, `${A}/clientes/${c.id}`);
+  const row = await db.one(`INSERT INTO activity (customer_id, kind, text) VALUES (?, 'nota', ?) RETURNING *`, [c.id, text]);
+  reply(req, res, { ok: true, message: 'Nota salva.', prepend: '#timeline', html: V.timelineItem(row) }, `${A}/clientes/${c.id}?ok=nota`);
+});
+
+
+// ---------- foto do cliente ----------
+const IMG_SIG = [
+  ['image/jpeg', (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff],
+  ['image/png', (b) => b.slice(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))],
+  ['image/webp', (b) => b.slice(0, 4).toString() === 'RIFF' && b.slice(8, 12).toString() === 'WEBP'],
+];
+
+router.get('/clientes/:id/foto', async (req, res) => {
+  const row = await db.one(`SELECT mime, data FROM customer_photos WHERE customer_id = ?`, [Number(req.params.id) || 0]);
+  if (!row) return res.status(404).end();
+  // Painel é privado: cache só no navegador; o ?v= muda quando a foto muda
+  res.set({ 'Cache-Control': 'private, max-age=31536000, immutable', 'Content-Type': row.mime, 'X-Content-Type-Options': 'nosniff' });
+  res.send(row.data);
+});
+
+router.post('/clientes/:id/foto', jsonBody, async (req, res) => {
+  const c = await getCustomer(req.params.id);
+  if (!c) return res.status(404).json({ ok: false, message: 'Cliente não encontrado.' });
+  const m = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(String(req.body?.image || ''));
+  if (!m) return res.status(400).json({ ok: false, message: 'Imagem inválida. Use JPG, PNG ou WebP.' });
+  const buf = Buffer.from(m[2], 'base64');
+  const sig = IMG_SIG.find(([, test]) => buf.length > 12 && test(buf));
+  if (!sig || buf.length > 400 * 1024) return res.status(400).json({ ok: false, message: 'Imagem inválida ou grande demais.' });
+  const row = await db.one(
+    `INSERT INTO customer_photos (customer_id, mime, data, updated_at) VALUES (?, ?, ?, now())
+     ON CONFLICT (customer_id) DO UPDATE SET mime = excluded.mime, data = excluded.data, updated_at = now()
+     RETURNING extract(epoch FROM updated_at)::bigint AS v`,
+    [c.id, sig[0], buf]
+  );
+  await db.log(c.id, 'status', 'Foto do cliente atualizada');
+  res.json({ ok: true, message: 'Foto salva.', src: `${A}/clientes/${c.id}/foto?v=${row.v}` });
+});
+
+router.post('/clientes/:id/foto/apagar', async (req, res) => {
+  const c = await getCustomer(req.params.id);
+  if (!c) return res.status(404).type('html').send(errorPage(404));
+  await db.run(`DELETE FROM customer_photos WHERE customer_id = ?`, [c.id]);
+  res.redirect(303, `${A}/clientes/${c.id}?ok=salvo`);
+});
+
+// ---------- localização ----------
+router.post('/clientes/:id/local', form, async (req, res) => {
+  const c = await getCustomer(req.params.id);
+  if (!c) return res.status(404).type('html').send(errorPage(404));
+  const query = String(req.body.endereco || '').trim().slice(0, 300) || null;
+  let link = String(req.body.link || '').trim().slice(0, 1000) || null;
+  if (link && !AG.isUrl(link)) {
+    return reply(req, res, { ok: false, message: 'O link precisa começar com https://' }, `${A}/clientes/${c.id}#local`);
+  }
+  const c2 = await db.one(`UPDATE customers SET maps_query = ?, maps_url = ?, updated_at = now() WHERE id = ? RETURNING *`, [query, link, c.id]);
+  const { answers } = await answersOf(c.id);
+  reply(req, res, { ok: true, message: 'Localização salva.', replace: '#local', html: V.mapCard(c2, answers) }, `${A}/clientes/${c.id}?ok=salvo#local`);
+});
+
+// ---------- agente no ZappMillion ----------
+async function agentReply(req, res, c2, message) {
+  const { answers } = await answersOf(c2.id);
+  reply(req, res, { ok: true, message, replace: '#agente', html: V.agentSection(c2, answers) }, `${A}/clientes/${c2.id}?ok=salvo#agente`);
+}
+
+router.post('/clientes/:id/agente', form, async (req, res) => {
+  const c = await getCustomer(req.params.id);
+  if (!c) return res.status(404).type('html').send(errorPage(404));
+  const perfil = AG.PROFILES[req.body.perfil] ? req.body.perfil : null;
+  const c2 = await db.one(`UPDATE customers SET agent_profile = ?, updated_at = now() WHERE id = ? RETURNING *`, [perfil, c.id]);
+  if (perfil !== AG.profileFor(c)) await db.log(c.id, 'status', `Perfil do agente: ${AG.PROFILES[AG.profileFor(c2)].label}`);
+  agentReply(req, res, c2, `Perfil ${AG.PROFILES[AG.profileFor(c2)].label} aplicado. Atualize o prompt e o tempo de resposta no ZappMillion.`);
+});
+
+router.post('/clientes/:id/uso', form, async (req, res) => {
+  const c = await getCustomer(req.params.id);
+  if (!c) return res.status(404).type('html').send(errorPage(404));
+  const used = Math.max(0, Math.floor(Number(String(req.body.usadas || '').replace(/\D/g, ''))));
+  const start = /^\d{4}-\d{2}-\d{2}$/.test(String(req.body.inicio || '')) ? req.body.inicio : null;
+  if (!start || !Number.isFinite(used) || new Date(start) > new Date()) {
+    return reply(req, res, { ok: false, message: 'Informe o número de respostas e uma data de início válida.' }, `${A}/clientes/${c.id}#agente`);
+  }
+  const c2 = await db.one(`UPDATE customers SET usage_used = ?, usage_cycle_start = ?::date, usage_updated_at = now(), updated_at = now() WHERE id = ? RETURNING *`, [used, start, c.id]);
+  const u = AG.usage(c2);
+  const msg = u.state === 'vai_estourar' || u.state === 'estourou' ? 'Uso salvo. Atenção: no ritmo atual as respostas não chegam ao fim do ciclo.' : 'Uso salvo.';
+  agentReply(req, res, c2, msg);
+});
+
+const slug = (t) => String(t || 'cliente').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'cliente';
+
+router.get('/clientes/:id/agente.json', async (req, res) => {
+  const c = await getCustomer(req.params.id);
+  if (!c) return res.status(404).type('html').send(errorPage(404));
+  const { answers } = await answersOf(c.id);
+  if (!answers) return res.redirect(303, `${A}/clientes/${c.id}#agente`);
+  const g = AG.build(c, answers);
+  res.set('Content-Disposition', `attachment; filename="agente-${slug(answers.empresa || c.name)}.json"`);
+  res.type('application/json').send(JSON.stringify(g.json, null, 2));
+});
+
+// ---------- exportar onboarding ----------
+router.get('/clientes/:id/onboarding.txt', async (req, res) => {
+  const c = await getCustomer(req.params.id);
+  const { answers } = c ? await answersOf(c.id) : {};
+  if (!answers) return res.status(404).type('html').send(errorPage(404, { message: 'Este cliente ainda não preencheu o onboarding.' }));
+  res.set('Content-Disposition', `attachment; filename="onboarding-${slug(answers.empresa || c.name)}.txt"`);
+  res.type('text/plain; charset=utf-8').send('﻿' + AG.txtExport(c, answers, FIELDS, labelOf));
+});
+
+router.get('/clientes/:id/onboarding.json', async (req, res) => {
+  const c = await getCustomer(req.params.id);
+  const { answers, onboarding } = c ? await answersOf(c.id) : {};
+  if (!answers) return res.status(404).type('html').send(errorPage(404, { message: 'Este cliente ainda não preencheu o onboarding.' }));
+  const campos = FIELDS.map(([k, label]) => ({ campo: k, pergunta: label, resposta: labelOf(k, answers[k]) ?? '' }));
+  const out = {
+    cliente: { nome: c.name, email: c.email, telefone: c.phone, plano: c.plan_name },
+    preenchido_em: onboarding.updated_at,
+    autorizou_lgpd: !!answers.lgpd,
+    respostas: campos,
+  };
+  res.set('Content-Disposition', `attachment; filename="onboarding-${slug(answers.empresa || c.name)}.json"`);
+  res.type('application/json').send(JSON.stringify(out, null, 2));
+});
+
+router.get('/clientes/:id/onboarding/imprimir', async (req, res) => {
+  const c = await getCustomer(req.params.id);
+  const { answers, onboarding } = c ? await answersOf(c.id) : {};
+  if (!answers) return res.status(404).type('html').send(errorPage(404, { message: 'Este cliente ainda não preencheu o onboarding.' }));
+  res.type('html').send(V.renderOnboardingPrint({ c, answers, onboarding }));
 });
 
 router.post('/clientes/:id/reenviar', async (req, res) => {

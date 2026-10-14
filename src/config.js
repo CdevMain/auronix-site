@@ -26,7 +26,7 @@ function resolveAdminPath() {
 // Versão dos arquivos estáticos (muda quando o CSS/JS muda, para o navegador não usar o antigo)
 function assetVersion() {
   const h = crypto.createHash('sha1');
-  for (const f of ['public/css/app.css', 'public/js/site.js', 'public/js/admin.js']) {
+  for (const f of ['public/css/app.css', 'public/js/site.js', 'public/js/admin.js', 'public/img/simbolo.svg', 'public/favicon.ico']) {
     try { h.update(fs.readFileSync(path.join(root, f))); } catch {}
   }
   return h.digest('hex').slice(0, 10);

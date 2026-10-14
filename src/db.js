@@ -30,7 +30,7 @@ pool.on('error', (err) => console.error('[banco]', err.message));
 
 // Todas as tabelas ficam no esquema "auronix". Em vez de depender do search_path (que o pooler do
 // Supabase não guarda entre conexões), o nome do esquema é colocado direto no SQL.
-const TABLES = ['webhook_events', 'customers', 'onboardings', 'sessions', 'emails', 'contact_messages', 'activity', 'contracts', 'settings'];
+const TABLES = ['webhook_events', 'customers', 'onboardings', 'sessions', 'emails', 'contact_messages', 'activity', 'contracts', 'settings', 'customer_photos'];
 const TABLE_RE = new RegExp(`\\b(FROM|INTO|UPDATE|JOIN)\\s+(${TABLES.join('|')})\\b`, 'gi');
 
 // Aceita "?" como marcador de parâmetro e converte para $1, $2...

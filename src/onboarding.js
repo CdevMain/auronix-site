@@ -24,11 +24,15 @@ const TONS = [
   ['formal', 'Formal'],
 ];
 
+const TIPOS_WHATSAPP = [['business', 'WhatsApp Business'], ['pessoal', 'WhatsApp comum'], ['api', 'API oficial do WhatsApp'], ['nao_sei', 'Não sei']];
+const FORA_HORARIO = [['responder_tudo', 'Responder normalmente'], ['responder_e_avisar', 'Responder e avisar que a equipe retorna depois'], ['so_recado', 'Só anotar o recado']];
+
 // Ordem e rótulos usados no formulário e no admin
 const FIELDS = [
   ['empresa', 'Nome da empresa'],
   ['segmento', 'Segmento'],
   ['cidade', 'Cidade'],
+  ['endereco', 'Endereço ou link do Google Maps'],
   ['site', 'Site ou Instagram'],
   ['responsavel', 'Responsável'],
   ['contato_whatsapp', 'WhatsApp do responsável'],
@@ -73,7 +77,7 @@ function validate(answers) {
 }
 
 function labelOf(key, value) {
-  const lists = { objetivos: OBJETIVOS, integracoes: INTEGRACOES, tom: TONS };
+  const lists = { objetivos: OBJETIVOS, integracoes: INTEGRACOES, tom: TONS, tipo_whatsapp: TIPOS_WHATSAPP, fora_horario: FORA_HORARIO };
   const list = lists[key];
   if (!list) return value;
   const map = Object.fromEntries(list);
@@ -147,6 +151,7 @@ ${errorBox}${savedBox}
     ${text(a, 'cidade', 'Cidade', { autocomplete: 'address-level2' })}
     ${text(a, 'site', 'Site ou Instagram', { placeholder: '@suaempresa' })}
   </div>
+  ${text(a, 'endereco', 'Endereço ou link do Google Maps', { autocomplete: 'street-address', hint: 'Se você atende no local. Pode escrever o endereço ou colar o link do Google Maps.', placeholder: 'Rua, número, bairro, cidade' })}
 </fieldset>
 
 <fieldset>
@@ -157,7 +162,7 @@ ${errorBox}${savedBox}
   </div>
   <div class="two">
     ${text(a, 'numero_agente', 'Número que o agente vai usar', { type: 'tel', required: true, hint: 'O número que seus clientes já chamam.' })}
-    ${select(a, 'tipo_whatsapp', 'Esse número usa', [['business', 'WhatsApp Business'], ['pessoal', 'WhatsApp comum'], ['api', 'API oficial do WhatsApp'], ['nao_sei', 'Não sei']])}
+    ${select(a, 'tipo_whatsapp', 'Esse número usa', TIPOS_WHATSAPP)}
   </div>
 </fieldset>
 
@@ -166,7 +171,7 @@ ${errorBox}${savedBox}
   ${checks(a, 'objetivos', 'Marque tudo o que se aplica', OBJETIVOS)}
   <div class="two">
     ${text(a, 'horario', 'Horário de atendimento da equipe', { placeholder: 'Seg a sex, 9h às 18h' })}
-    ${select(a, 'fora_horario', 'Fora desse horário, o agente deve', [['responder_tudo', 'Responder normalmente'], ['responder_e_avisar', 'Responder e avisar que a equipe retorna depois'], ['so_recado', 'Só anotar o recado']])}
+    ${select(a, 'fora_horario', 'Fora desse horário, o agente deve', FORA_HORARIO)}
   </div>
 </fieldset>
 
@@ -196,7 +201,7 @@ ${errorBox}${savedBox}
 
 <fieldset>
   <legend>Seus dados</legend>
-  <label class="check check--plain"><input type="checkbox" name="lgpd" value="sim"${a.lgpd ? ' checked' : ''} required><span>Autorizo a Auronix a usar estas informações para configurar e operar o meu agente, conforme a LGPD. ${req}</span></label>
+  <label class="check check--plain"><input type="checkbox" name="lgpd" value="sim"${a.lgpd ? ' checked' : ''} required><span>Autorizo a Auronix a usar estas informações para configurar e operar o meu agente, conforme a <a class="link" href="https://www.planalto.gov.br/ccivil_03/_ato2015-2018/2018/lei/l13709.htm" target="_blank" rel="noopener">LGPD (Lei 13.709/2018)</a>. Veja como cuidamos dos seus dados na <a class="link" href="/privacidade" target="_blank" rel="noopener">política de privacidade</a>. ${req}</span></label>
 </fieldset>
 
 <div class="form__submit">

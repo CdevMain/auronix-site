@@ -23,9 +23,9 @@ Node 22.9+ e Express, atrás do Nginx no VPS Wepwawet, em **auronix.cdev.com.br*
 
 ## Banco de dados (Supabase)
 
-- Projeto **CDEV Site**, esquema separado **`auronix`** (9 tabelas). Não mistura com as tabelas do CDEV Site.
+- Projeto **CDEV Site**, esquema separado **`auronix`** (10 tabelas). Não mistura com as tabelas do CDEV Site.
 - O esquema não fica exposto na API do Supabase: RLS ligado, sem políticas, e nada liberado para `anon`/`authenticated`. Só o servidor do site acessa, pela conexão Postgres.
-- A estrutura está em `db/schema.sql`. O site roda esse arquivo ao iniciar (só cria o que falta). Para desligar: `DB_AUTO_MIGRATE=0`.
+- A estrutura está em `db/schema.sql`. O site roda esse arquivo ao iniciar só num banco vazio. Mudanças depois disso ficam em `db/migrations/` e são aplicadas pelo SQL Editor do Supabase (o usuário `auronix_app` não pode alterar tabelas). A `002_foto_mapa_agente.sql` já foi aplicada.
 - Você vê e edita os dados no painel do Supabase: **Table Editor**, troque o esquema de `public` para `auronix`.
 - Backup: o Supabase faz backup diário. Para guardar uma cópia sua: `pg_dump "$DATABASE_URL" -n auronix > auronix-backup.sql`.
 
@@ -36,7 +36,8 @@ Node 22.9+ e Express, atrás do Nginx no VPS Wepwawet, em **auronix.cdev.com.br*
 ## Painel
 
 - **Visão geral:** receita, custo e lucro por mês, margem, lucro por plano e uma lista do que precisa de atenção.
-- **Clientes:** busca, filtros, exportar CSV, cadastrar cliente à mão, editar plano/status/etapa/pagamento/custo, notas e histórico, apagar um, vários ou todos os testes.
+- **Clientes:** busca, filtros, exportar CSV, cadastrar cliente à mão, editar plano/status/etapa/pagamento/custo, notas (salvam sem recarregar), foto do cliente, localização com mapa do Google, exportar o onboarding (PDF, texto ou JSON), apagar um, vários ou todos os testes.
+- **Agente no ZappMillion** (na página do cliente): gera, a partir do onboarding, o prompt, os documentos de conhecimento, o tempo de resposta e o arquivo `.json` para importar no ZappMillion. Tem três perfis de economia de respostas (Econômico para o Start, Equilibrado para o Pro, Experiência para o Business) e o controle de uso: informe as respostas usadas e o início do ciclo, e o painel projeta o fim do mês e avisa na Visão geral quando vão faltar.
 - **Pedidos:** tudo que a Cakto enviou, e a caixa "Confirmar se alguém comprou" (por e-mail ou número do pedido).
 - **Mensagens:** o que chega pela página de contato.
 - **E-mails:** registro de cada envio (enviado ou falhou, com o motivo) e envio de teste.

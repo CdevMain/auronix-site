@@ -1,7 +1,8 @@
 // Telas do painel administrativo.
 const config = require('./config');
-const { esc, SYMBOL, head, asset } = require('./html');
+const { esc, SYMBOL, head, asset, icon } = require('./html');
 const { FIELDS, labelOf } = require('./onboarding');
+const AG = require('./agent');
 const { customerFinance, brl, pct, planCost } = require('./finance');
 const { EVENT_LABEL } = require('./cakto');
 
@@ -75,9 +76,12 @@ const FLASH = {
 function flashBox(key, extra) {
   const text = FLASH[key] || extra;
   if (!text) return '';
-  const bad = ['falhou', 'semenvio', 'contratofalhou', 'contratocriado', 'semempresa'].includes(key);
-  return `<div class="notice ${bad ? 'notice--solid' : 'notice--ok'}" role="status">${esc(text)}${extra && FLASH[key] ? ' ' + esc(extra) : ''}</div>`;
+  const bad = ['falhou', 'semenvio', 'contratofalhou', 'contratocriado', 'semempresa', 'fotoerro'].includes(key);
+  return toast(`${text}${extra && FLASH[key] ? ' ' + extra : ''}`, bad);
 }
+// Aviso temporário no rodapé: some sozinho e não volta ao recarregar a página
+const toast = (text, bad = false) =>
+  `<div class="toast${bad ? ' toast--bad' : ''}" role="status" data-toast><p>${esc(text)}</p><button class="toast__close" type="button" aria-label="Fechar aviso" data-toast-close>${icon('close')}</button></div>`;
 
 function shell({ title, active, body, flash = '', unread = 0 }) {
   const tab = (key, href, label, badge = 0) =>
@@ -105,9 +109,9 @@ ${head({ title: `${title} | Painel Auronix`, noindex: true })}
   </nav>
 </header>
 <main class="amain" id="conteudo">
-${flash}
 ${body}
 </main>
+<div class="toasts" data-toasts aria-live="polite">${flash}</div>
 <script src="${asset('/js/admin.js')}" defer></script>
 </body>
 </html>`;
@@ -234,7 +238,7 @@ function renderCustomers({ customers, q, filters, testCount, unread, flash }) {
       const f = customerFinance(c);
       return `<tr>
   <td class="cell-check"><input type="checkbox" name="ids" value="${c.id}" form="bulk" aria-label="Selecionar ${esc(c.name || c.email)}"></td>
-  <td data-label="Cliente"><a href="${A()}/clientes/${c.id}">${esc(c.name || '(sem nome)')}</a>${testPill(c)}<br><span class="hint">${esc(c.email)}</span></td>
+  <td data-label="Cliente"><div class="who-cell">${avatar(c, 'small')}<div><a href="${A()}/clientes/${c.id}">${esc(c.name || '(sem nome)')}</a>${testPill(c)}<br><span class="hint">${esc(c.email)}</span></div></div></td>
   <td data-label="Plano">${esc(c.plan_name || 'não identificado')}</td>
   <td data-label="Status">${statusPill(c.status)}</td>
   <td data-label="Pagamento">${paymentPill(c.payment_confirmed)}</td>
@@ -392,6 +396,193 @@ function renderContracts({ contracts, unread, flash, auto }) {
   });
 }
 
+
+// ---------- foto do cliente ----------
+const initials = (c) =>
+  String(c.name || c.email || '?')
+    .replace(/@.*/, '')
+    .split(/[\s._-]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0])
+    .join('') || '?';
+function avatar(c, size = '') {
+  const cls = `avatar${size ? ' avatar--' + size : ''}${c.photo_v ? ' has-photo' : ''}`;
+  const inner = c.photo_v
+    ? `<img src="${A()}/clientes/${c.id}/foto?v=${esc(String(c.photo_v))}" alt="" width="256" height="256" loading="lazy">`
+    : esc(initials(c));
+  return `<span class="${cls}" data-avatar aria-hidden="true">${inner}</span>`;
+}
+
+function photoCard(c) {
+  return `<section class="acard">
+    <h2>Foto</h2>
+    <p class="hint">Logo ou foto do cliente, usada como ícone no painel. Cortamos em quadrado e reduzimos para 256 px.</p>
+    <div class="photo-row">
+      ${avatar(c, 'large')}
+      <div class="inline-actions">
+        <label class="btn btn--small btn--dark file-btn">Escolher imagem<input type="file" accept="image/png,image/jpeg,image/webp" data-photo-upload="${A()}/clientes/${c.id}/foto" aria-label="Escolher foto do cliente"></label>
+        <form method="post" action="${A()}/clientes/${c.id}/foto/apagar" data-photo-remove${c.photo_v ? '' : ' hidden'}><button class="btn btn--small btn--outline" type="submit" data-confirm="Remover a foto deste cliente?">Remover</button></form>
+      </div>
+    </div>
+  </section>`;
+}
+
+function mapCard(c, answers) {
+  const loc = AG.location(c, answers);
+  return `<section class="acard" id="local">
+    <h2>Localização</h2>
+    <div class="loc"><div class="loc__map">
+    ${loc.embed
+      ? `<iframe class="map-frame" src="${esc(loc.embed)}" title="Mapa de ${esc(c.name || c.email)}" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>`
+      : '<p class="map-empty">Sem endereço ainda. Preencha abaixo, ou o cliente informa no onboarding.</p>'}
+    ${loc.openUrl ? `<p><a class="link" href="${esc(loc.openUrl)}" target="_blank" rel="noopener">Abrir no Google Maps</a></p>` : ''}
+    </div>
+    <form class="form form--compact" method="post" action="${A()}/clientes/${c.id}/local" data-ajax>
+      <div class="field"><label for="m-q">Endereço</label><input type="text" id="m-q" name="endereco" value="${esc(c.maps_query || '')}" placeholder="${esc(loc.query && !c.maps_query ? loc.query : 'Rua, número, bairro, cidade')}" autocomplete="off"></div>
+      <div class="field"><label for="m-u">Link do Google Maps</label><p class="hint" id="h-mu">Opcional. No Google Maps: Compartilhar › Copiar link.</p><input type="url" id="m-u" name="link" value="${esc(c.maps_url || '')}" aria-describedby="h-mu" placeholder="https://maps.app.goo.gl/..."></div>
+      <div><button class="btn btn--small btn--dark" type="submit">Salvar localização</button></div>
+    </form></div>
+  </section>`;
+}
+
+// ---------- agente no ZappMillion ----------
+const num = (n) => Number(n || 0).toLocaleString('pt-BR');
+function usageBlock(c) {
+  const u = AG.usage(c);
+  const today = new Date().toISOString().slice(0, 10);
+  const cap = u.capacity
+    ? `<p class="hint">Com ${num(u.limit)} respostas e cerca de ${String(AG.PROFILES[AG.profileFor(c)].porConversa).replace('.', ',')} respostas por conversa (estimativa do perfil), dá para atender umas <strong>${num(u.capacity.conversas)} conversas por mês</strong>, perto de ${num(u.capacity.porDia)} por dia.</p>`
+    : '<p class="hint">Plano sem limite de respostas cadastrado em plans.json.</p>';
+  let status = '<p>Informe abaixo quantas respostas o agente já usou (aparece no ZappMillion, em "Respostas do agente").</p>';
+  if (u.known) {
+    const w = Math.min(100, Math.round(u.pct * 100));
+    const msg = {
+      ok: `No ritmo atual, fecha o mês com cerca de ${num(u.projected)} respostas. Dentro do plano.`,
+      atencao: `No ritmo atual, fecha o mês com cerca de ${num(u.projected)} respostas, perto do limite.`,
+      vai_estourar: `No ritmo atual, as respostas acabam em ${u.runsOutIn} ${u.runsOutIn === 1 ? 'dia' : 'dias'} (projeção de ${num(u.projected)} no mês).`,
+      estourou: 'As respostas do plano acabaram. O agente para de responder até a renovação.',
+      sem_limite: '',
+    }[u.state];
+    status = `<div class="usage__nums"><span><strong>${num(u.used)}</strong> de ${num(u.limit)} respostas</span><span>${u.days} ${u.days === 1 ? 'dia' : 'dias'} de ciclo</span><span>${num(Math.round(u.perDay))} por dia</span></div>
+    <div class="meter${['vai_estourar', 'estourou', 'atencao'].includes(u.state) ? ' meter--warn' : ''}" role="img" aria-label="${w}% das respostas usadas"><span style="width:${w}%"></span></div>
+    <p>${pill({ ok: 'Dentro do plano', atencao: 'Atenção', vai_estourar: 'Vai faltar', estourou: 'Acabou' }[u.state] || '-', u.state === 'ok' ? 'on' : u.state === 'atencao' ? 'warn' : 'bad')} ${esc(msg)}</p>
+    ${['vai_estourar', 'estourou', 'atencao'].includes(u.state) ? `<ul class="tips">
+      ${AG.profileFor(c) !== 'economico' ? '<li>Mude o perfil para <strong>Econômico</strong> e atualize o prompt e o tempo de resposta no ZappMillion.</li>' : ''}
+      <li>Complete os documentos de conhecimento (preços, pagamento, perguntas frequentes): menos idas e vindas.</li>
+      <li>Defina um horário de atendimento no ZappMillion, se o cliente aceitar.</li>
+      ${c.plan_id !== 'business' ? `<li>Ofereça o plano ${c.plan_id === 'start' ? 'Pro (8.000 respostas)' : 'Business (23.000 respostas)'}.</li>` : ''}
+    </ul>` : ''}
+    ${u.updatedAt ? `<p class="hint">Atualizado em ${fmtDate(u.updatedAt)}.</p>` : ''}`;
+  }
+  return `<div class="agent__block usage">
+    <h3>Uso das respostas</h3>
+    ${status}
+    ${cap}
+    <form class="usage-form" method="post" action="${A()}/clientes/${c.id}/uso" data-ajax>
+      <div class="field"><label for="u-used">Respostas usadas</label><input type="number" id="u-used" name="usadas" min="0" step="1" inputmode="numeric" value="${c.usage_used ?? ''}" required></div>
+      <div class="field"><label for="u-start">Ciclo começou em</label><input type="date" id="u-start" name="inicio" value="${c.usage_cycle_start ? esc(new Date(c.usage_cycle_start).toISOString().slice(0, 10)) : ''}" max="${today}" required></div>
+      <button class="btn btn--small btn--dark" type="submit">Atualizar uso</button>
+    </form>
+  </div>`;
+}
+
+function agentSection(c, answers) {
+  const key = AG.profileFor(c);
+  const opts = Object.entries(AG.PROFILES)
+    .map(([k, p]) => `<option value="${k}"${k === key ? ' selected' : ''}>${esc(p.label)}${AG.PLAN_PROFILE[c.plan_id] === k ? ' (padrão do plano)' : ''}</option>`)
+    .join('');
+  const head = `<div class="agent__head">
+    <div><h2>Agente no ZappMillion</h2><p class="hint">Gerado a partir do onboarding. Revise antes de colar.</p></div>
+    <form class="agent__profile" method="post" action="${A()}/clientes/${c.id}/agente" data-ajax>
+      <div class="field"><label for="a-perfil">Perfil de economia</label><select id="a-perfil" name="perfil" data-autosubmit>${opts}</select></div>
+      <noscript><button class="btn btn--small btn--dark" type="submit">Aplicar</button></noscript>
+    </form>
+  </div>
+  <p>${esc(AG.PROFILES[key].resumo)}</p>`;
+
+  if (!answers) {
+    return `<section class="asection agent" id="agente">${head}<p class="empty">O cliente ainda não preencheu o onboarding. O prompt aparece aqui assim que ele enviar.</p>${usageBlock(c)}</section>`;
+  }
+  const g = AG.build(c, answers, key);
+  const docs = g.docs
+    .map((d, i) => `<article class="doc-card"><h4>${esc(d.title)}</h4><pre id="doc-${i}">${esc(d.content)}</pre><div><button class="btn btn--small btn--outline" type="button" data-copy-text="${esc(d.content)}">Copiar texto</button></div></article>`)
+    .join('');
+  const set = (label, value, copy) =>
+    `<div><dt>${esc(label)}</dt><dd>${esc(value)}${copy ? ` <button class="btn btn--small btn--outline" type="button" data-copy-text="${esc(copy)}">Copiar</button>` : ''}</dd></div>`;
+
+  return `<section class="asection agent" id="agente">
+  ${head}
+
+  <div class="agent__block">
+    <div class="agent__bar"><h3>1. Importar de uma vez</h3>
+      <a class="btn btn--small btn--dark" href="${A()}/clientes/${c.id}/agente.json" download>Baixar arquivo do agente (.json)</a></div>
+    <p class="hint">No ZappMillion, importe o arquivo para criar o agente com prompt, tempo de resposta, idioma e documentos de conhecimento. Se a importação recusar os documentos, use os blocos abaixo.</p>
+  </div>
+
+  <div class="agent__block">
+    <div class="agent__bar"><h3>2. Prompt</h3><button class="btn btn--small btn--dark" type="button" data-copy="#a-prompt">Copiar prompt</button></div>
+    <label class="sr-only" for="a-prompt">Prompt do agente</label>
+    <textarea class="prompt-box" id="a-prompt" rows="18" spellcheck="false">${esc(g.prompt)}</textarea>
+    <p class="hint">Pode editar aqui antes de copiar. Edições não ficam salvas: o texto é gerado de novo a partir do onboarding.</p>
+  </div>
+
+  <div class="agent__block">
+    <h3>3. Conhecimento (${g.docs.length} ${g.docs.length === 1 ? 'documento' : 'documentos'})</h3>
+    <p class="hint">No ZappMillion, em Conhecimento, crie um documento para cada bloco, com o mesmo título.</p>
+    <div class="docs">${docs || '<p class="doc-card doc-card--empty">Nenhum conteúdo no onboarding para virar documento.</p>'}</div>
+  </div>
+
+  <div class="agent__block">
+    <h3>4. Ajustes</h3>
+    <dl class="settings-list">
+      ${set('Nome do agente', g.ajustes.nome, g.ajustes.nome)}
+      ${set('Tempo de resposta', `mínimo ${g.ajustes.min} s, máximo ${g.ajustes.max} s`)}
+      ${set('Idioma das respostas', g.ajustes.idioma)}
+      ${set('E-mail para transferência', g.ajustes.email || 'admin da conta', g.ajustes.email)}
+      ${set('Horário de atendimento', g.ajustes.horario)}
+    </dl>
+    <p class="hint">O tempo de resposta é o que mais economiza: o agente espera, junta as mensagens seguidas do contato e responde uma vez só.</p>
+  </div>
+
+  ${g.integracoes.length ? `<div class="agent__block"><h3>5. Integrações para conectar</h3><ul class="tips">${g.integracoes.map((t) => `<li>${esc(t)}</li>`).join('')}</ul></div>` : ''}
+  ${g.dicas.length ? `<div class="agent__block"><h3>Para gastar menos respostas</h3><ul class="tips">${g.dicas.map((t) => `<li>${esc(t)}</li>`).join('')}</ul></div>` : ''}
+
+  ${usageBlock(c)}
+</section>`;
+}
+
+function renderOnboardingPrint({ c, answers, onboarding }) {
+  const rows = FIELDS.map(([k, label]) => {
+    const val = labelOf(k, answers[k]);
+    return `<div><dt>${esc(label)}</dt><dd>${esc(Array.isArray(val) ? val.join(', ') : val) || '-'}</dd></div>`;
+  }).join('');
+  return `<!doctype html>
+<html lang="pt-BR">
+<head>
+${head({ title: `Onboarding de ${answers.empresa || c.name || c.email} | Painel Auronix`, noindex: true })}
+</head>
+<body>
+<main class="print-sheet">
+  <div class="print-sheet__head">
+    <span class="print-sheet__brand">${SYMBOL}<span>auronix</span></span>
+    <div class="inline-actions print-actions">
+      <button class="btn btn--small btn--dark" type="button" data-print>Imprimir ou salvar PDF</button>
+      <a class="btn btn--small btn--outline" href="${A()}/clientes/${c.id}">Voltar</a>
+    </div>
+  </div>
+  <h1>Onboarding: ${esc(answers.empresa || c.name || c.email)}</h1>
+  <p class="hint">Cliente: ${esc(c.name || '-')} · ${esc(c.email)} · Plano ${esc(c.plan_name || '-')} · Preenchido em ${fmtDate(onboarding.updated_at)}</p>
+  <dl class="answers">${rows}<div><dt>Autorizou uso dos dados (LGPD)</dt><dd>${answers.lgpd ? 'Sim' : 'Não'}</dd></div></dl>
+</main>
+<script src="${asset('/js/admin.js')}" defer></script>
+</body>
+</html>`;
+}
+
+const timelineItem = (a) =>
+  `<li class="timeline__item timeline__item--${esc(a.kind)}"><time>${fmtDate(a.created_at)}</time><p>${esc(a.text)}</p></li>`;
+
 function renderCustomer({ c, onboarding, events, emails, activity, unread, flash, contracts = [] }) {
   const f = customerFinance(c);
   const link = c.onboarding_token ? `${config.publicUrl}/onboarding/${c.onboarding_token}` : '';
@@ -415,11 +606,9 @@ function renderCustomer({ c, onboarding, events, emails, activity, unread, flash
       (m) => `<tr><td data-label="Data">${fmtDate(m.created_at)}</td><td data-label="Assunto">${esc(m.subject)}</td><td data-label="Status">${pill(m.status === 'enviado' ? 'Enviado' : m.status === 'falhou' ? 'Falhou' : 'Não enviado', m.status === 'enviado' ? 'on' : 'bad')}${m.error ? `<br><span class="hint">${esc(m.error)}</span>` : ''}</td></tr>`
     )
     .join('');
-  const timeline = activity.length
-    ? `<ol class="timeline">${activity
-        .map((a) => `<li class="timeline__item timeline__item--${esc(a.kind)}"><time>${fmtDate(a.created_at)}</time><p>${esc(a.text)}</p></li>`)
-        .join('')}</ol>`
-    : '<p class="empty">Sem registros ainda.</p>';
+  const timeline = `<ol class="timeline" id="timeline">${
+    activity.length ? activity.map(timelineItem).join('') : '<li class="empty" data-empty>Sem registros ainda.</li>'
+  }</ol>`;
 
   const payBox =
     c.payment_confirmed === 1
@@ -435,10 +624,13 @@ function renderCustomer({ c, onboarding, events, emails, activity, unread, flash
     flash,
     body: `<p><a class="link" href="${A()}/clientes">Voltar para clientes</a></p>
 <div class="ahead">
-  <div>
-    <h1>${esc(c.name || c.email)}</h1>
-    <p class="ahead__sub">${esc(c.email)}${c.phone ? ' · ' + esc(c.phone) : ''}</p>
-    <p class="ahead__pills">${statusPill(c.status)} ${paymentPill(c.payment_confirmed)} ${stagePill(c.stage)}${testPill(c)}</p>
+  <div class="ahead__who">
+    ${avatar(c)}
+    <div>
+      <h1>${esc(c.name || c.email)}</h1>
+      <p class="ahead__sub">${esc(c.email)}${c.phone ? ' · ' + esc(c.phone) : ''}</p>
+      <p class="ahead__pills">${statusPill(c.status)} ${paymentPill(c.payment_confirmed)} ${stagePill(c.stage)}${testPill(c)}</p>
+    </div>
   </div>
 </div>
 
@@ -466,11 +658,21 @@ function renderCustomer({ c, onboarding, events, emails, activity, unread, flash
     <p class="hint">E-mail com o link: ${c.onboarding_sent_at ? `enviado em ${fmtDate(c.onboarding_sent_at)}` : 'ainda não enviado'}</p>
     ${link ? `<div class="copy-field"><input type="text" readonly value="${esc(link)}" aria-label="Link de onboarding" id="ob-link"><button class="btn btn--small btn--outline" type="button" data-copy="#ob-link">Copiar</button></div>` : ''}
     <form method="post" action="${A()}/clientes/${c.id}/reenviar"><button class="btn btn--small btn--dark" type="submit">Enviar link por e-mail</button></form>
+    ${onboarding ? `<div class="inline-actions"><span class="hint">Exportar respostas:</span>
+      <a class="btn btn--small btn--outline" href="${A()}/clientes/${c.id}/onboarding/imprimir">PDF</a>
+      <a class="btn btn--small btn--outline" href="${A()}/clientes/${c.id}/onboarding.txt" download>Texto</a>
+      <a class="btn btn--small btn--outline" href="${A()}/clientes/${c.id}/onboarding.json" download>JSON</a></div>` : ''}
   </section>
 </div>
 <div class="agrid">
   ${contractCard(c, contracts)}
+  ${photoCard(c)}
 </div>
+<div class="agrid agrid--one">
+  ${mapCard(c, answers)}
+</div>
+
+${agentSection(c, answers)}
 
 <section class="asection">
   <h2>Editar cliente</h2>
@@ -482,7 +684,7 @@ function renderCustomer({ c, onboarding, events, emails, activity, unread, flash
 
 <section class="asection">
   <h2>Notas e histórico</h2>
-  <form class="form note-form" method="post" action="${A()}/clientes/${c.id}/nota">
+  <form class="form note-form" method="post" action="${A()}/clientes/${c.id}/nota" data-ajax data-reset>
     <label class="sr-only" for="n-text">Nova nota</label>
     <textarea id="n-text" name="texto" rows="2" placeholder="Ex.: liguei, vai mandar o catálogo amanhã" required></textarea>
     <button class="btn btn--small btn--dark" type="submit">Adicionar nota</button>
@@ -736,6 +938,6 @@ function renderSettings({ unread, flash, sessions, company, companyFields, auto,
 }
 
 module.exports = {
-  STATUS, STAGES, PAYMENT, fmtDate, flashBox, renderLogin, renderDashboard, renderCustomers, renderNewCustomer,
+  STATUS, STAGES, PAYMENT, fmtDate, flashBox, timelineItem, agentSection, mapCard, renderOnboardingPrint, renderLogin, renderDashboard, renderCustomers, renderNewCustomer,
   renderCustomer, renderContracts, renderOrders, renderOrder, renderMessages, renderEmails, renderSettings,
 };

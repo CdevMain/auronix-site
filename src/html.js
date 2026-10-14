@@ -40,9 +40,9 @@ ${description ? `<meta name="description" content="${esc(description)}">` : ''}
 ${noindex ? '<meta name="robots" content="noindex, nofollow">' : ''}
 ${canonicalPath != null ? `<link rel="canonical" href="${esc(c.publicUrl + canonicalPath)}">` : ''}
 <meta name="theme-color" content="#000000">
-<link rel="icon" href="/favicon.ico" sizes="any">
-<link rel="icon" href="/img/simbolo.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+<link rel="icon" href="${asset('/favicon.ico')}" sizes="any">
+<link rel="icon" href="${asset('/img/simbolo.svg')}" type="image/svg+xml">
+<link rel="apple-touch-icon" href="${asset('/img/apple-touch-icon.png')}">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600&display=swap" rel="stylesheet">
