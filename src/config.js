@@ -69,7 +69,7 @@ const config = {
     gaId: env.GA_ID ?? 'G-PY424WTQV5',
     clarityId: env.CLARITY_ID ?? 'ywuyag9zls',
   },
-  plans: plansFile.plans.map((p) => ({ ...p, priceNumber: toNumber(p.price), defaultCost: toNumber(p.cost) })),
+  plans: plansFile.plans.map((p) => ({ ...p, priceNumber: toNumber(p.price), defaultCost: toNumber(p.cost), setupRetentionNumber: toNumber(p.setupRetention) })),
   comparison: plansFile.comparison || [],
   assetVersion: assetVersion(),
   secureCookies: String(env.PUBLIC_URL || '').startsWith('https://'),

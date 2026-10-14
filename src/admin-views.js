@@ -231,14 +231,60 @@ function filterSelect(name, label, options, current) {
     .join('')}</select></div>`;
 }
 
-function renderCustomers({ customers, q, filters, testCount, unread, flash }) {
+// O que pede ação em cada cliente (usado nos cards e na visão geral)
+function pendencias(c) {
+  const list = [];
+  if (c.status === 'atrasado') list.push('Pagamento atrasado');
+  if (c.payment_confirmed !== 1 && ['ativo', 'pendente'].includes(c.status)) list.push('Pagamento sem confirmação');
+  if (c.status === 'ativo' && !c.has_onb && Date.now() - new Date(c.created_at).getTime() > 2 * 86400000) list.push('Onboarding pendente há mais de 2 dias');
+  if (c.stage === 'onboarding_recebido') list.push('Onboarding recebido: configurar o agente');
+  const u = AG.usage(c);
+  if (u.known && u.state === 'estourou') list.push('Respostas do plano acabaram');
+  else if (u.known && u.state === 'vai_estourar') list.push(`Respostas acabam em ${u.runsOutIn} ${u.runsOutIn === 1 ? 'dia' : 'dias'}`);
+  return list;
+}
+const TONE = { ativo: 'on', pendente: 'wait', atrasado: 'late', pausado: 'off', cancelado: 'off', reembolsado: 'off', chargeback: 'late' };
+
+function customerCard(c) {
+  const f = customerFinance(c);
+  const pend = pendencias(c);
+  const u = AG.usage(c);
+  const meter = u.known && u.limit
+    ? `<div class="ccard__usage"><div class="meter meter--thin${['vai_estourar', 'estourou', 'atencao'].includes(u.state) ? ' meter--warn' : ''}" role="img" aria-label="${Math.round(u.pct * 100)}% das respostas usadas"><span style="width:${Math.min(100, Math.round(u.pct * 100))}%"></span></div><span>${u.used.toLocaleString('pt-BR')} de ${u.limit.toLocaleString('pt-BR')} respostas</span></div>`
+    : '';
+  return `<article class="ccard ccard--${TONE[c.status] || 'off'}${c.is_test ? ' ccard--test' : ''}">
+  ${pend.length ? `<span class="ping" title="${esc(pend.join(' · '))}"><span class="ping__dot" aria-hidden="true"></span><span class="ping__n">${pend.length}</span><span class="sr-only">${pend.length === 1 ? 'pendência' : 'pendências'}</span></span>` : ''}
+  <div class="ccard__top">
+    <input type="checkbox" name="ids" value="${c.id}" form="bulk" aria-label="Selecionar ${esc(c.name || c.email)}">
+    ${avatar(c, 'small')}
+    <div class="ccard__who">
+      <h2 class="ccard__name"><a href="${A()}/clientes/${c.id}">${esc(c.name || '(sem nome)')}</a></h2>
+      <p class="ccard__mail">${esc(c.email)}</p>
+    </div>
+  </div>
+  <p class="ccard__pills">${statusPill(c.status)} ${paymentPill(c.payment_confirmed)} ${stagePill(c.stage)}${testPill(c)}</p>
+  ${pend.length ? `<ul class="ccard__todo">${pend.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : ''}
+  ${meter}
+  <dl class="ccard__facts">
+    <div><dt>Plano</dt><dd>${esc(c.plan_name ? c.plan_name.replace(/^Auronix\s+/i, '') : '-')}</dd></div>
+    <div><dt>Lucro/mês</dt><dd>${brl(f.profit)}</dd></div>
+    <div><dt>Desde</dt><dd>${fmtDate(c.created_at, false)}</dd></div>
+  </dl>
+</article>`;
+}
+
+function renderCustomers({ customers, q, filters, testCount, unread, flash, view = 'cards' }) {
   const plans = Object.fromEntries(config.plans.map((p) => [p.id, p.name]));
+  const empty = q || Object.values(filters).some(Boolean)
+    ? 'Nenhum cliente com esses filtros.'
+    : 'Nenhum cliente ainda. Quando a Cakto enviar a primeira venda, ele aparece aqui. Você também pode cadastrar um cliente à mão em "Novo cliente".';
   const rows = customers
     .map((c) => {
       const f = customerFinance(c);
+      const pend = pendencias(c);
       return `<tr>
   <td class="cell-check"><input type="checkbox" name="ids" value="${c.id}" form="bulk" aria-label="Selecionar ${esc(c.name || c.email)}"></td>
-  <td data-label="Cliente"><div class="who-cell">${avatar(c, 'small')}<div><a href="${A()}/clientes/${c.id}">${esc(c.name || '(sem nome)')}</a>${testPill(c)}<br><span class="hint">${esc(c.email)}</span></div></div></td>
+  <td data-label="Cliente"><div class="who-cell">${avatar(c, 'small')}<div><a href="${A()}/clientes/${c.id}">${esc(c.name || '(sem nome)')}</a>${testPill(c)}${pend.length ? ` <span class="ping ping--inline" title="${esc(pend.join(' · '))}"><span class="ping__dot" aria-hidden="true"></span><span class="ping__n">${pend.length}</span></span>` : ''}<br><span class="hint">${esc(c.email)}</span></div></div></td>
   <td data-label="Plano">${esc(c.plan_name || 'não identificado')}</td>
   <td data-label="Status">${statusPill(c.status)}</td>
   <td data-label="Pagamento">${paymentPill(c.payment_confirmed)}</td>
@@ -248,6 +294,21 @@ function renderCustomers({ customers, q, filters, testCount, unread, flash }) {
 </tr>`;
     })
     .join('');
+  const pendCount = customers.filter((c) => pendencias(c).length).length;
+  const qs = (v) => {
+    const params = new URLSearchParams(Object.entries({ ...filters, q }).filter(([, val]) => val));
+    if (v === 'tabela') params.set('ver', 'tabela');
+    const str = params.toString();
+    return `${A()}/clientes${str ? '?' + str : ''}`;
+  };
+  const list = view === 'tabela'
+    ? `<div class="table-box"><table class="rtable">
+<thead><tr><th class="cell-check"><input type="checkbox" data-check-all aria-label="Selecionar todos"></th><th>Cliente</th><th>Plano</th><th>Status</th><th>Pagamento</th><th>Etapa</th><th>Lucro por mês</th><th>Desde</th></tr></thead>
+<tbody>${rows || `<tr><td colspan="8" class="empty">${empty}</td></tr>`}</tbody>
+</table></div>`
+    : customers.length
+    ? `<div class="cgrid">${customers.map(customerCard).join('\n')}</div>`
+    : `<p class="empty map-empty">${empty}</p>`;
 
   return shell({
     title: 'Clientes',
@@ -263,26 +324,37 @@ function renderCustomers({ customers, q, filters, testCount, unread, flash }) {
 </div>
 
 <form class="form filters" method="get" action="${A()}/clientes" role="search">
+  ${view === 'tabela' ? '<input type="hidden" name="ver" value="tabela">' : ''}
   <div class="field filters__q"><label for="f-q">Buscar</label><input type="search" id="f-q" name="q" value="${esc(q)}" placeholder="Nome, e-mail, telefone ou pedido"></div>
   ${filterSelect('status', 'Status', STATUS, filters.status)}
   ${filterSelect('plano', 'Plano', plans, filters.plano)}
   ${filterSelect('etapa', 'Etapa', STAGES, filters.etapa)}
   ${filterSelect('pagamento', 'Pagamento', { confirmado: 'Confirmado', nao: 'Não confirmado', sem: 'Sem confirmação' }, filters.pagamento)}
   <label class="check check--plain filters__test"><input type="checkbox" name="testes" value="1"${filters.testes ? ' checked' : ''}><span>Mostrar testes</span></label>
-  <div class="filters__go"><button class="btn btn--dark btn--small" type="submit">Filtrar</button> <a class="link" href="${A()}/clientes">Limpar</a></div>
+  <div class="filters__go"><button class="btn btn--dark btn--small" type="submit">Filtrar</button> <a class="link" href="${A()}/clientes${view === 'tabela' ? '?ver=tabela' : ''}">Limpar</a></div>
 </form>
 
-<form id="bulk" method="post" action="${A()}/clientes/acoes" class="bulk">
-  <span class="hint" data-selected-count>Nenhum selecionado</span>
-  <button class="btn btn--small btn--outline" type="submit" name="acao" value="teste">Marcar como teste</button>
-  <button class="btn btn--small btn--danger" type="submit" name="acao" value="apagar" data-confirm="Apagar os clientes selecionados? Isso apaga também o onboarding, o histórico e os pedidos deles. Não dá para desfazer.">Apagar selecionados</button>
-</form>
+<div class="listbar">
+  <form id="bulk" method="post" action="${A()}/clientes/acoes" class="bulk">
+    <label class="check check--plain bulk__all"><input type="checkbox" data-check-all aria-label="Selecionar todos os clientes da lista"><span data-selected-count>Nenhum selecionado</span></label>
+    <button class="btn btn--small btn--outline" type="submit" name="acao" value="teste">Marcar como teste</button>
+    <button class="btn btn--small btn--danger" type="submit" name="acao" value="apagar" data-confirm="Apagar os clientes selecionados? Isso apaga também o onboarding, o histórico e os pedidos deles. Não dá para desfazer.">Apagar selecionados</button>
+  </form>
+  <nav class="viewswitch" aria-label="Modo de exibição">
+    <a href="${qs('cards')}"${view !== 'tabela' ? ' aria-current="page"' : ''}>Cards</a>
+    <a href="${qs('tabela')}"${view === 'tabela' ? ' aria-current="page"' : ''}>Tabela</a>
+  </nav>
+</div>
+${view !== 'tabela' ? `<ul class="legend" aria-label="Legenda do contorno dos cards">
+  <li><span class="legend__sw legend__sw--on"></span>Ativo</li>
+  <li><span class="legend__sw legend__sw--wait"></span>Aguardando pagamento</li>
+  <li><span class="legend__sw legend__sw--late"></span>Atrasado ou chargeback</li>
+  <li><span class="legend__sw legend__sw--off"></span>Pausado, cancelado ou reembolsado</li>
+  <li><span class="ping ping--inline"><span class="ping__dot" aria-hidden="true"></span></span>Pede ação (${pendCount})</li>
+</ul>` : ''}
 ${testCount ? `<form method="post" action="${A()}/testes/apagar" class="testbar"><span>${testCount} ${testCount === 1 ? 'cliente de teste' : 'clientes de teste'} no banco.</span> <button class="btn btn--small btn--danger" type="submit" data-confirm="Apagar todos os clientes, pedidos e e-mails de teste? Não dá para desfazer.">Apagar todos os testes</button></form>` : ''}
 
-<div class="table-box"><table class="rtable">
-<thead><tr><th class="cell-check"><input type="checkbox" data-check-all aria-label="Selecionar todos"></th><th>Cliente</th><th>Plano</th><th>Status</th><th>Pagamento</th><th>Etapa</th><th>Lucro por mês</th><th>Desde</th></tr></thead>
-<tbody>${rows || `<tr><td colspan="8" class="empty">${q || Object.values(filters).some(Boolean) ? 'Nenhum cliente com esses filtros.' : 'Nenhum cliente ainda. Quando a Cakto enviar a primeira venda, ele aparece aqui. Você também pode cadastrar um cliente à mão em "Novo cliente".'}</td></tr>`}</tbody>
-</table></div>
+${list}
 <p class="hint">${customers.length} ${customers.length === 1 ? 'cliente' : 'clientes'} na lista.</p>`,
   });
 }
@@ -879,7 +951,7 @@ function renderEmails({ emails, provider, unread, flash, lastTest }) {
 }
 
 // ---------- configurações ----------
-function renderSettings({ unread, flash, sessions, company, companyFields, auto, adminUser = '', authMode = 'local' }) {
+function renderSettings({ unread, flash, sessions, company, companyFields, auto, adminUser = '', authMode = 'local', testimonials = [] }) {
   const costRows = config.plans
     .map((p) => {
       const cost = planCost(p.id);
@@ -919,6 +991,24 @@ function renderSettings({ unread, flash, sessions, company, companyFields, auto,
     <div class="form__submit"><button class="btn btn--dark" type="submit">Salvar</button> <a class="link" href="/contrato" target="_blank" rel="noopener">Ver modelo</a></div>
   </form>
 </section>
+<section class="asection" id="depoimentos">
+  <h2>Depoimentos na página inicial</h2>
+  <p class="hint">Só publique o que o cliente escreveu ou disse, com autorização dele. Enquanto não houver nenhum, a página mostra exemplos de conversa marcados como "exemplo".</p>
+  ${testimonials.length
+    ? `<ul class="tlist">${testimonials.map((t) => `<li><div><strong>${esc(t.nome)}</strong>${t.negocio || t.cidade ? ` <span class="hint">${esc([t.negocio, t.cidade].filter(Boolean).join(' · '))}</span>` : ''}<p>${esc(t.texto)}</p></div>
+      <form method="post" action="${A()}/configuracoes/depoimentos/apagar"><input type="hidden" name="id" value="${esc(t.id)}"><button class="btn btn--small btn--outline" type="submit" data-confirm="Tirar este depoimento do site?">Remover</button></form></li>`).join('')}</ul>`
+    : '<p class="empty">Nenhum depoimento publicado.</p>'}
+  <form class="form form--compact" method="post" action="${A()}/configuracoes/depoimentos">
+    <div class="two">
+      <div class="field"><label for="d-nome">Nome <span class="req">(obrigatório)</span></label><input type="text" id="d-nome" name="nome" maxlength="80" required></div>
+      <div class="field"><label for="d-neg">Negócio</label><input type="text" id="d-neg" name="negocio" maxlength="80" placeholder="Ex.: Estúdio Lume, clínica de estética"></div>
+    </div>
+    <div class="field"><label for="d-cid">Cidade</label><input type="text" id="d-cid" name="cidade" maxlength="60"></div>
+    <div class="field"><label for="d-txt">Depoimento <span class="req">(obrigatório)</span></label><textarea id="d-txt" name="texto" rows="3" maxlength="500" required></textarea></div>
+    <label class="check check--plain"><input type="checkbox" name="autorizado" value="1" required><span>O cliente autorizou publicar este depoimento com o nome dele.</span></label>
+    <div class="form__submit"><button class="btn btn--dark" type="submit">Publicar depoimento</button></div>
+  </form>
+</section>
 <section class="asection">
   <h2>Endereços</h2>
   <dl class="answers answers--tight">
@@ -938,6 +1028,6 @@ function renderSettings({ unread, flash, sessions, company, companyFields, auto,
 }
 
 module.exports = {
-  STATUS, STAGES, PAYMENT, fmtDate, flashBox, timelineItem, agentSection, mapCard, renderOnboardingPrint, renderLogin, renderDashboard, renderCustomers, renderNewCustomer,
+  STATUS, STAGES, PAYMENT, fmtDate, flashBox, timelineItem, pendencias, agentSection, mapCard, renderOnboardingPrint, renderLogin, renderDashboard, renderCustomers, renderNewCustomer,
   renderCustomer, renderContracts, renderOrders, renderOrder, renderMessages, renderEmails, renderSettings,
 };

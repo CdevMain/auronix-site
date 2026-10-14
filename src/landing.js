@@ -1,5 +1,5 @@
 const config = require('./config');
-const { esc, SYMBOL, sitePage, icon } = require('./html');
+const { esc, SYMBOL, sitePage, icon, asset } = require('./html');
 
 const brl = (n, digits = 0) =>
   Number(n).toLocaleString('pt-BR', { minimumFractionDigits: digits, maximumFractionDigits: digits });
@@ -75,12 +75,57 @@ function comparisonTable() {
   </div>`;
 }
 
+
+// Depoimentos reais (cadastrados no painel, com autorização do cliente). Sem nenhum, mostra exemplos de uso
+// claramente marcados como exemplo: nunca depoimento inventado.
+function testimonials() {
+  try {
+    const db = require('./db');
+    const list = JSON.parse(db.setting('depoimentos', '[]'));
+    return Array.isArray(list) ? list.filter((t) => t && t.texto && t.nome) : [];
+  } catch {
+    return [];
+  }
+}
+
+const EXAMPLES = [
+  { seg: 'Clínica de estética', icon: 'calendar', msgs: [['in', 'Quanto custa a limpeza de pele? Tem horário essa semana?'], ['out', 'A limpeza de pele sai por R$ 180 e dura 1h. Tenho quinta às 15h ou sexta às 10h. Qual prefere?'], ['in', 'Quinta 15h'], ['out', 'Reservado! Te mando um lembrete na quarta.']] },
+  { seg: 'Loja de roupas', icon: 'tag', msgs: [['in', 'Tem esse vestido no M?'], ['out', 'Tem sim! O vestido Aurora no M custa R$ 139, em até 3x sem juros. Quer o link para finalizar?'], ['in', 'Quero'], ['out', 'Aqui está o link. O frete é grátis acima de R$ 200.']] },
+  { seg: 'Restaurante', icon: 'clock', msgs: [['in', 'Vocês entregam no centro? Até que horas?'], ['out', 'Entregamos no centro até as 23h, taxa de R$ 6. Quer ver o cardápio de hoje?'], ['in', 'Pode mandar'], ['out', 'Aqui está o cardápio. O prato do dia é parmegiana com fritas.']] },
+];
+
+function practiceSection() {
+  const real = testimonials();
+  if (real.length) {
+    return `<section class="practice" id="relatos" aria-labelledby="t-practice">
+  <p class="eyebrow">Relatos</p>
+  <h2 id="t-practice">Quem já tem um agente no ar</h2>
+  <div class="quotes">${real
+    .slice(0, 6)
+    .map((t) => `<figure class="quote">
+      <blockquote><p>${esc(t.texto)}</p></blockquote>
+      <figcaption><strong>${esc(t.nome)}</strong><span>${esc([t.negocio, t.cidade].filter(Boolean).join(' · '))}</span></figcaption>
+    </figure>`)
+    .join('')}</div>
+</section>`;
+  }
+  return `<section class="practice" id="relatos" aria-labelledby="t-practice">
+  <p class="eyebrow">Na prática</p>
+  <h2 id="t-practice">Como fica no dia a dia</h2>
+  <p class="section-lede">Exemplos de conversas que um agente da Auronix resolve sozinho, em negócios diferentes.</p>
+  <div class="examples">${EXAMPLES.map((e) => `<figure class="example">
+      <figcaption>${icon(e.icon)}<span>${esc(e.seg)}</span><em>exemplo</em></figcaption>
+      <ol class="example__log">${e.msgs.map(([dir, text]) => `<li class="emsg emsg--${dir}">${esc(text)}</li>`).join('')}</ol>
+    </figure>`).join('')}</div>
+</section>`;
+}
+
 function renderLanding() {
   const c = config;
   const body = `
 <section class="hero">
   <div class="hero__copy">
-    <h1>Seu WhatsApp atende, vende e agenda. Mesmo quando você não está.</h1>
+    <h1><span class="hl">Seu WhatsApp</span> atende, vende e agenda. Mesmo quando você não está.</h1>
     <p class="hero__lede">A Auronix cria um agente de IA treinado no seu negócio. Ele responde clientes na hora, apresenta produtos, marca horários e chama você quando a conversa precisa de uma pessoa.</p>
     <div class="hero__actions">
       <a class="btn btn--dark" href="#planos">Ver planos</a>
@@ -113,15 +158,101 @@ function renderLanding() {
   </dl>
 </section>
 
+<section class="why" id="por-que" aria-labelledby="t-why">
+  <p class="eyebrow">Por que a Auronix</p>
+  <h2 id="t-why">Um atendente que conhece o seu negócio. Não um robô genérico.</h2>
+  <div class="versus">
+    <div class="versus__col versus__col--before">
+      <h3>Sem agente</h3>
+      <ul>
+        <li>${icon('x')}<span>A mensagem das 23h fica para amanhã, e o cliente compra de quem respondeu antes.</span></li>
+        <li>${icon('x')}<span>Você repete a mesma resposta de preço e horário várias vezes por dia.</span></li>
+        <li>${icon('x')}<span>Pedido de agendamento se perde no meio das conversas.</span></li>
+      </ul>
+    </div>
+    <div class="versus__col versus__col--after">
+      <h3>Com a Auronix</h3>
+      <ul>
+        <li>${icon('check')}<span>Resposta em segundos, a qualquer hora, com as informações que você aprovou.</span></li>
+        <li>${icon('check')}<span>Preço, forma de pagamento e próximo passo na mesma mensagem.</span></li>
+        <li>${icon('check')}<span>Horário marcado e você avisado quando a conversa precisa de uma pessoa.</span></li>
+      </ul>
+    </div>
+  </div>
+  <div class="reasons">
+    <div class="reason">${icon('user')}<h3>Uma pessoa configura</h3><p>Cada agente é configurado e revisado à mão, a partir do que você conta no onboarding. Nada de modelo pronto.</p></div>
+    <div class="reason">${icon('eye')}<h3>Você aprova antes</h3><p>Você testa as respostas e pede ajustes antes de o agente falar com qualquer cliente.</p></div>
+    <div class="reason">${icon('hand')}<h3>Sabe a hora de parar</h3><p>Reclamação, negociação ou assunto fora do combinado vão para você, com o resumo da conversa.</p></div>
+    <div class="reason">${icon('shield')}<h3>Preço claro, sem amarras</h3><p>Mensal, sem fidelidade e sem taxa de adesão. Regras de cancelamento publicadas na <a class="link" href="/transparencia">transparência</a>.</p></div>
+  </div>
+</section>
+
 <section class="steps" id="como-funciona" aria-labelledby="t-steps">
   <div class="steps__inner">
+    <p class="eyebrow eyebrow--inv">Começar é simples</p>
     <h2 id="t-steps">Do pagamento ao agente <span class="onair"><span class="onair__dot" aria-hidden="true"></span>no ar</span></h2>
-    <ol class="steps__list">
-      <li><h3>Escolha um plano</h3><p>O pagamento é feito com segurança pela Cakto.</p></li>
-      <li><h3>Conte sobre o seu negócio</h3><p>Logo depois do pagamento, chega no seu e-mail o link do formulário de onboarding.</p></li>
-      <li><h3>Aprove as respostas</h3><p>Treinamos o agente com o que você contou e você testa antes de ele falar com clientes.</p></li>
-      <li><h3>Agente no ar</h3><p>Conectamos ao seu WhatsApp e seguimos ajustando conforme as conversas acontecem.</p></li>
+    <p class="steps__lede">Você escolhe o plano e conta sobre o negócio. A configuração fica com a gente.</p>
+    <ol class="flow">
+      <li class="flow__card">
+        <span class="flow__n" aria-hidden="true">01</span>
+        <h3>Escolha um plano</h3>
+        <p>O pagamento é feito com segurança pela Cakto.</p>
+        <div class="demo" data-demo="plano" data-step="0" aria-hidden="true">
+          <div class="demo__bar"><i></i><i></i><i></i><span>demonstração</span></div>
+          <div class="demo__body">
+            <div class="dplan" data-k="1"><span class="dradio"></span><span class="dplan__name">Start<small>2.000 respostas</small></span><b>R$ ${esc(c.plans[0]?.price || '')}</b></div>
+            <div class="dplan is-on" data-k="2"><span class="dradio"></span><span class="dplan__name">Pro<small>8.000 respostas</small></span><b>R$ ${esc(c.plans[1]?.price || '')}</b></div>
+            <div class="dplan" data-k="3"><span class="dradio"></span><span class="dplan__name">Business<small>23.000 respostas</small></span><b>R$ ${esc(c.plans[2]?.price || '')}</b></div>
+            <span class="dbtn">Ir para o pagamento ${icon('arrowRight')}</span>
+          </div>
+        </div>
+      </li>
+      <li class="flow__card">
+        <span class="flow__n" aria-hidden="true">02</span>
+        <h3>Conte sobre o seu negócio</h3>
+        <p>O link do onboarding chega no seu e-mail logo depois do pagamento.</p>
+        <div class="demo" data-demo="onboarding" data-step="0" aria-hidden="true">
+          <div class="demo__bar"><i></i><i></i><i></i><span>demonstração</span></div>
+          <div class="demo__body">
+            <span class="dlabel">Nome da empresa</span>
+            <span class="dfield"><span data-type>Estúdio Lume</span><i class="dcaret"></i></span>
+            <span class="dlabel">O que o agente deve fazer</span>
+            <span class="dchips"><span class="dchip is-on" data-k="2">${icon('check')}Atender</span><span class="dchip is-on" data-k="3">${icon('check')}Agendar</span><span class="dchip is-on" data-k="4">${icon('check')}Vender</span></span>
+            <span class="dprogress is-on"><span></span></span>
+            <span class="dsent is-on">${icon('check')}Respostas enviadas</span>
+          </div>
+        </div>
+      </li>
+      <li class="flow__card">
+        <span class="flow__n" aria-hidden="true">03</span>
+        <h3>Aprove as respostas</h3>
+        <p>Treinamos o agente com o que você contou. Você testa antes de ele falar com clientes.</p>
+        <div class="demo" data-demo="aprovar" data-step="0" aria-hidden="true">
+          <div class="demo__bar"><i></i><i></i><i></i><span>demonstração</span></div>
+          <div class="demo__body">
+            <span class="dmsg dmsg--in is-on">Vocês abrem sábado?</span>
+            <span class="dmsg dmsg--out is-on"><span data-type>Abrimos sim, das 9h às 13h. Quer que eu reserve um horário?</span></span>
+            <span class="dactions"><span class="dbtn dbtn--ghost">Ajustar</span><span class="dbtn dbtn--ok is-on">${icon('check')}Aprovar</span></span>
+            <span class="dstamp is-on">${icon('check')}Resposta aprovada</span>
+          </div>
+        </div>
+      </li>
+      <li class="flow__card flow__card--live">
+        <span class="flow__n" aria-hidden="true">04</span>
+        <h3>Agente no ar</h3>
+        <p>Conectamos ao seu WhatsApp e seguimos ajustando conforme as conversas acontecem.</p>
+        <div class="demo" data-demo="noar" data-step="0" aria-hidden="true">
+          <div class="demo__bar"><i></i><i></i><i></i><span>demonstração</span></div>
+          <div class="demo__body">
+            <span class="dlive is-on"><span class="dswitch is-on"><span></span></span><span class="dlive__label">Agente</span><span class="dlive__state"><span class="dlive__dot"></span><span class="dlive__off">desligado</span><span class="dlive__on">no ar</span></span></span>
+            <span class="dstat"><span class="dstat__n" data-count="37">37</span><span class="dstat__l">respostas hoje</span></span>
+            <span class="dbars is-on"><i style="--h:30%"></i><i style="--h:55%"></i><i style="--h:42%"></i><i style="--h:70%"></i><i style="--h:58%"></i><i style="--h:86%"></i><i style="--h:64%"></i></span>
+            <span class="dlast is-on">${icon('clock')}Último atendimento às 23:41</span>
+          </div>
+        </div>
+      </li>
     </ol>
+    <p class="flow__note">${icon('lock')}<span>O link do onboarding é liberado assim que a Cakto confirma o pagamento.</span></p>
   </div>
 </section>
 
@@ -138,6 +269,34 @@ function renderLanding() {
     <li>${icon('undo')}<span><strong>7 dias para desistir</strong>com o valor devolvido</span></li>
   </ul>
   ${comparisonTable()}
+</section>
+
+${practiceSection()}
+
+<section class="about" id="sobre" aria-labelledby="t-about">
+  <figure class="about__photo">
+    <picture>
+      <source srcset="${asset('/img/carlos.webp')}" type="image/webp">
+      <img src="${asset('/img/carlos.jpg')}" alt="Carlos Eduardo, fundador da Auronix" width="640" height="640" loading="lazy" decoding="async">
+    </picture>
+    <figcaption><strong>Carlos Eduardo</strong><span>Fundador da Auronix</span></figcaption>
+  </figure>
+  <div class="about__text">
+    <p class="eyebrow">Quem está por trás</p>
+    <h2 id="t-about">Prazer, eu sou o Carlos.</h2>
+    <p>Sou desenvolvedor full stack e designer. Comecei programando em Java no ecossistema do Minecraft e hoje crio produtos digitais de ponta a ponta, do wireframe ao deploy.</p>
+    <p>Criei a Auronix para que pequenos e médios negócios tenham no WhatsApp um atendimento rápido e bem feito, com uma pessoa de verdade cuidando da configuração de cada agente. Quando você assina, é comigo que você fala.</p>
+    <dl class="about__facts">
+      <div><dt>4+ anos</dt><dd>em projetos digitais</dd></div>
+      <div><dt>Full stack</dt><dd>e design de interfaces</dd></div>
+      <div><dt>1 a 1</dt><dd>cada agente configurado à mão</dd></div>
+    </dl>
+    <p class="about__links">
+      <a class="pill-link" href="https://cdev.com.br" rel="noopener">${icon('globe')}<span>Portfólio</span></a>
+      <a class="pill-link" href="https://github.com/CdevMain" rel="noopener">${icon('code')}<span>GitHub</span></a>
+      <a class="pill-link" href="https://www.linkedin.com/in/carlos-eduardo-058967230/" rel="noopener">${icon('user')}<span>LinkedIn</span></a>
+    </p>
+  </div>
 </section>
 
 <section class="faq" id="duvidas" aria-labelledby="t-faq">
@@ -168,9 +327,17 @@ function renderLanding() {
       <p>A assinatura é mensal. Para cancelar, fale com a gente pelo e-mail ${esc(c.contactEmail)} ou pela <a class="link" href="/contato">página de contato</a>.</p>
     </details>
     <details>
+      <summary>E se eu desistir?</summary>
+      <p>Contratou e mudou de ideia? Você tem 7 dias para desistir e receber o valor de volta (artigo 49 do CDC). Fora desse prazo, se o cancelamento vier depois de você enviar o onboarding e antes de o agente entrar no ar, devolvemos o valor pago menos o custo de criação do agente (${c.plans.map((p) => `${esc(p.shortName || p.name)} R$ ${brl(p.setupRetentionNumber)}`).join(', ')}). Detalhes no <a class="link" href="/contrato">contrato</a>.</p>
+    </details>
+    <details>
       <summary>O que acontece com os dados dos meus clientes?</summary>
       <p>Eles são usados só para o funcionamento do seu agente e tratados de acordo com a LGPD. Veja a <a class="link" href="/privacidade">política de privacidade</a>.</p>
     </details>
+  </div>
+  <div class="faq__ask">
+    <div><h3>Não achou a sua dúvida?</h3><p>Pergunte direto pra gente. Respondemos por e-mail.</p></div>
+    <a class="btn btn--dark" href="/contato#c-msg">${icon('send')}<span>Perguntar outra coisa</span></a>
   </div>
 </section>
 

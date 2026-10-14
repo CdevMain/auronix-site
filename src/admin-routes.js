@@ -137,14 +137,14 @@ function listCustomers(query) {
   if (query.pagamento === 'nao') where.push('c.payment_confirmed = 0');
   if (query.pagamento === 'sem') where.push('c.payment_confirmed IS NULL');
   if (!query.testes) where.push('c.is_test = 0');
-  return db.query(`SELECT c.*, (SELECT extract(epoch FROM p.updated_at)::bigint FROM customer_photos p WHERE p.customer_id = c.id) AS photo_v FROM customers c ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY c.created_at DESC, c.id DESC LIMIT 1000`, args);
+  return db.query(`SELECT c.*, (SELECT extract(epoch FROM p.updated_at)::bigint FROM customer_photos p WHERE p.customer_id = c.id) AS photo_v, EXISTS (SELECT 1 FROM onboardings o WHERE o.customer_id = c.id) AS has_onb FROM customers c ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY c.created_at DESC, c.id DESC LIMIT 1000`, args);
 }
 
 router.get('/clientes', async (req, res) => {
   const filters = { status: req.query.status || '', plano: req.query.plano || '', etapa: req.query.etapa || '', pagamento: req.query.pagamento || '', testes: req.query.testes ? '1' : '' };
   const testCount = (await db.one(`SELECT COUNT(*)::int AS n FROM customers WHERE is_test = 1`)).n;
   res.type('html').send(
-    V.renderCustomers({ customers: await listCustomers(req.query), q: req.query.q || '', filters, testCount, unread: await unread(), flash: flashOf(req) })
+    V.renderCustomers({ customers: await listCustomers(req.query), q: req.query.q || '', filters, testCount, unread: await unread(), flash: flashOf(req), view: req.query.ver === 'tabela' ? 'tabela' : 'cards' })
   );
 });
 
@@ -552,8 +552,27 @@ router.post('/emails/teste', form, async (req, res) => {
 router.get('/configuracoes', async (req, res) => {
   const sessions = (await db.one(`SELECT COUNT(*)::int AS n FROM sessions WHERE expires_at > now()`)).n;
   res.type('html').send(
-    V.renderSettings({ unread: await unread(), flash: flashOf(req), sessions, company: company(), companyFields: COMPANY_FIELDS, auto: db.setting('contract.auto') === '1', adminUser: req.adminUser, authMode: auth.mode() })
+    V.renderSettings({ unread: await unread(), flash: flashOf(req), sessions, company: company(), companyFields: COMPANY_FIELDS, auto: db.setting('contract.auto') === '1', adminUser: req.adminUser, authMode: auth.mode(), testimonials: readTestimonials() })
   );
+});
+function readTestimonials() {
+  try {
+    const list = JSON.parse(db.setting('depoimentos', '[]'));
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+router.post('/configuracoes/depoimentos', form, async (req, res) => {
+  const t = (k, n) => String(req.body[k] || '').trim().slice(0, n);
+  const item = { id: Date.now().toString(36), nome: t('nome', 80), negocio: t('negocio', 80), cidade: t('cidade', 60), texto: t('texto', 500), at: new Date().toISOString() };
+  if (!item.nome || !item.texto || req.body.autorizado !== '1') return res.redirect(303, `${A}/configuracoes#depoimentos`);
+  await db.setSetting('depoimentos', JSON.stringify([...readTestimonials(), item]));
+  res.redirect(303, `${A}/configuracoes?ok=config#depoimentos`);
+});
+router.post('/configuracoes/depoimentos/apagar', form, async (req, res) => {
+  await db.setSetting('depoimentos', JSON.stringify(readTestimonials().filter((x) => x.id !== String(req.body.id || ''))));
+  res.redirect(303, `${A}/configuracoes?ok=config#depoimentos`);
 });
 router.post('/configuracoes/custos', form, async (req, res) => {
   for (const p of config.plans) {

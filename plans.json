@@ -1,5 +1,5 @@
 {
-  "_leia": "Edite nomes, preços, itens e links. 'cost' é quanto cada cliente desse plano te custa por mês (usado no cálculo de lucro do painel; dá para mudar no painel também). 'regularPrice' e 'promoUntil' (AAAA-MM-DD) mostram um preço de lançamento: preencha SÓ se o preço realmente vai subir para 'regularPrice' depois dessa data. 'checkoutUrl' é o link de checkout da Cakto. 'caktoOfferIds'/'caktoProductIds' ligam cada venda do webhook ao plano. 'comparison' monta a tabela de comparação. Reinicie o serviço depois de editar.",
+  "_leia": "Edite nomes, preços, itens e links. 'cost' é quanto cada cliente desse plano te custa por mês (usado no cálculo de lucro do painel; dá para mudar no painel também). 'regularPrice' e 'promoUntil' (AAAA-MM-DD) mostram um preço de lançamento: preencha SÓ se o preço realmente vai subir para 'regularPrice' depois dessa data. 'checkoutUrl' é o link de checkout da Cakto. 'caktoOfferIds'/'caktoProductIds' ligam cada venda do webhook ao plano. 'comparison' monta a tabela de comparação. Reinicie o serviço depois de editar. 'setupRetention' é o valor retido se o cliente cancelar depois que a configuração começou e antes de o agente entrar no ar (custo de criação do agente); aparece no contrato, nos termos e na transparência.",
   "plans": [
     {
       "id": "start",
@@ -9,6 +9,7 @@
       "price": "397",
       "period": "/mês",
       "cost": "97",
+      "setupRetention": "97",
       "responses": 2000,
       "regularPrice": "",
       "promoUntil": "",
@@ -39,6 +40,7 @@
       "price": "597",
       "period": "/mês",
       "cost": "127",
+      "setupRetention": "127",
       "responses": 8000,
       "regularPrice": "",
       "promoUntil": "",
@@ -67,6 +69,7 @@
       "price": "950",
       "period": "/mês",
       "cost": "202",
+      "setupRetention": "202",
       "responses": 23000,
       "regularPrice": "",
       "promoUntil": "",
@@ -90,12 +93,47 @@
     }
   ],
   "comparison": [
-    ["Respostas do agente por mês", "2.000", "8.000", "23.000"],
-    ["Configuração inicial", "Incluída", "Incluída", "Incluída"],
-    ["Suporte", "Padrão", "Prioritário", "Prioritário"],
-    ["Reuniões mensais", "—", "1 de 30 min", "2 de 45 min"],
-    ["Relatórios", "Básico", "Detalhado", "Avançado"],
-    ["Revisão do agente", "Básica", "Mensal", "Avançada"],
-    ["Acompanhamento estratégico", "—", "Básico", "Dedicado"]
+    [
+      "Respostas do agente por mês",
+      "2.000",
+      "8.000",
+      "23.000"
+    ],
+    [
+      "Configuração inicial",
+      "Incluída",
+      "Incluída",
+      "Incluída"
+    ],
+    [
+      "Suporte",
+      "Padrão",
+      "Prioritário",
+      "Prioritário"
+    ],
+    [
+      "Reuniões mensais",
+      "—",
+      "1 de 30 min",
+      "2 de 45 min"
+    ],
+    [
+      "Relatórios",
+      "Básico",
+      "Detalhado",
+      "Avançado"
+    ],
+    [
+      "Revisão do agente",
+      "Básica",
+      "Mensal",
+      "Avançada"
+    ],
+    [
+      "Acompanhamento estratégico",
+      "—",
+      "Básico",
+      "Dedicado"
+    ]
   ]
 }

@@ -12,12 +12,15 @@
       var wait = Math.max(0, min - (Date.now() - start));
       setTimeout(function () {
         loader.classList.add('is-done');
+        d.documentElement.classList.add('is-ready');
         setTimeout(function () { loader.remove(); }, 600);
       }, wait);
     };
     if (d.readyState === 'complete') hide();
     else window.addEventListener('load', hide, { once: true });
     setTimeout(hide, 2600); // nunca prende a página
+  } else {
+    requestAnimationFrame(function () { d.documentElement.classList.add('is-ready'); });
   }
 
   // ---------- menu lateral (celular) ----------
@@ -67,6 +70,91 @@
       }, { threshold: 0.35 });
       io.observe(chat);
     }
+  }
+
+
+  // ---------- demonstrações dos passos: tocam em loop enquanto estão na tela ----------
+  // Cada passo: [espera em ms, ação, seletor]. Ações: on, off, type (digita o texto), count (conta até data-count), end.
+  var SCRIPTS = {
+    plano: [[700, 'on', '.dplan[data-k="1"]'], [900, 'off', '.dplan[data-k="1"]'], [0, 'on', '.dplan[data-k="2"]'], [900, 'on', '.dbtn'], [2600, 'end']],
+    onboarding: [[600, 'type', '[data-type]'], [450, 'on', '.dchip[data-k="2"]'], [380, 'on', '.dchip[data-k="3"]'], [380, 'on', '.dchip[data-k="4"]'], [350, 'on', '.dprogress'], [1000, 'on', '.dsent'], [2600, 'end']],
+    aprovar: [[600, 'on', '.dmsg--in'], [700, 'on', '.dmsg--out'], [100, 'type', '.dmsg--out [data-type]'], [700, 'on', '.dbtn--ok'], [500, 'on', '.dstamp'], [2600, 'end']],
+    noar: [[700, 'on', '.dswitch'], [150, 'on', '.dlive'], [400, 'on', '.dbars'], [0, 'count', '[data-count]'], [900, 'on', '.dlast'], [3000, 'end']],
+  };
+  var demos = d.querySelectorAll('.demo[data-demo]');
+  if (demos.length && !reduce && 'IntersectionObserver' in window) {
+    var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+    Array.prototype.forEach.call(demos, function (el, n) {
+      var script = SCRIPTS[el.getAttribute('data-demo')];
+      if (!script) return;
+      var typed = Array.prototype.map.call(el.querySelectorAll('[data-type]'), function (t) { return [t, t.textContent]; });
+      var counters = Array.prototype.map.call(el.querySelectorAll('[data-count]'), function (t) { return [t, Number(t.getAttribute('data-count')) || 0]; });
+      var finals = Array.prototype.slice.call(el.querySelectorAll('.is-on'));
+      var visible = false, running = false;
+      var card = el.closest('.flow__card');
+      var reset = function () {
+        Array.prototype.forEach.call(el.querySelectorAll('.is-on'), function (x) { x.classList.remove('is-on'); });
+        typed.forEach(function (t) { t[0].textContent = ''; });
+        counters.forEach(function (c) { c[0].textContent = '0'; });
+      };
+      var finish = function () {
+        reset();
+        finals.forEach(function (x) { x.classList.add('is-on'); });
+        typed.forEach(function (t) { t[0].textContent = t[1]; });
+        counters.forEach(function (c) { c[0].textContent = String(c[1]); });
+      };
+      var type = function (sel) {
+        var item = typed.filter(function (t) { return t[0].matches(sel); })[0];
+        if (!item) return Promise.resolve();
+        var i = 0, text = item[1];
+        return new Promise(function (done) {
+          (function step() {
+            i++;
+            item[0].textContent = text.slice(0, i);
+            if (i >= text.length) return done();
+            setTimeout(step, 28 + Math.random() * 45);
+          })();
+        });
+      };
+      var count = function (sel) {
+        var item = counters.filter(function (c) { return c[0].matches(sel); })[0];
+        if (!item) return Promise.resolve();
+        var t0 = performance.now(), dur = 1100, to = item[1];
+        return new Promise(function (done) {
+          (function frame(now) {
+            var k = Math.min(1, (now - t0) / dur);
+            item[0].textContent = String(Math.round(to * (1 - Math.pow(1 - k, 3))));
+            if (k < 1) requestAnimationFrame(frame); else done();
+          })(t0);
+        });
+      };
+      var run = async function () {
+        if (running) return;
+        running = true;
+        el.classList.add('is-anim');
+        await sleep(n * 350);
+        while (visible) {
+          reset();
+          if (card) card.classList.add('is-active');
+          for (var i = 0; i < script.length && visible; i++) {
+            var st = script[i];
+            await sleep(st[0]);
+            var target = st[2] ? el.querySelector(st[2]) : null;
+            if (st[1] === 'on' && target) target.classList.add('is-on');
+            else if (st[1] === 'off' && target) target.classList.remove('is-on');
+            else if (st[1] === 'type') await type(st[2]);
+            else if (st[1] === 'count') await count(st[2]);
+          }
+          if (card) card.classList.remove('is-active');
+        }
+        finish();
+        running = false;
+      };
+      new IntersectionObserver(function (entries) {
+        visible = entries.some(function (e) { return e.isIntersecting; });
+        if (visible) run();
+      }, { threshold: 0.4 }).observe(el);
+    });
   }
 
   // ---------- barra de compra no celular: aparece depois do topo e some perto dos planos ----------

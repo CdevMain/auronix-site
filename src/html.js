@@ -22,6 +22,15 @@ const ICON_PATHS = {
   check: '<path d="m5 12 5 5 9-10"/>',
   calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
   undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/>',
+  globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3Z"/>',
+  code: '<path d="m8 8-4 4 4 4M16 8l4 4-4 4M14 5l-4 14"/>',
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/>',
+  bolt: '<path d="M13 3 5 14h6l-1 7 8-11h-6l1-7Z"/>',
+  eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
+  hand: '<path d="M7 11V6a1.5 1.5 0 0 1 3 0v4M10 10V4.5a1.5 1.5 0 0 1 3 0V10M13 10V5.5a1.5 1.5 0 0 1 3 0V11M16 9.5a1.5 1.5 0 0 1 3 0V14a7 7 0 0 1-7 7h-1a6 6 0 0 1-5-2.7L3.6 15a1.5 1.5 0 0 1 2.4-1.8L7 14.5"/>',
+  x: '<path d="M7 7l10 10M17 7 7 17"/>',
+  arrowRight: '<path d="M5 12h14M13 6l6 6-6 6"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   spark: '<path d="M12 3c.6 4.6 2.4 6.4 7 7-4.6.6-6.4 2.4-7 7-.6-4.6-2.4-6.4-7-7 4.6-.6 6.4-2.4 7-7Z"/>',
 };
 const icon = (name, cls = 'ico') =>
@@ -116,38 +125,48 @@ function siteFooter() {
   const { company } = require('./company');
   const co = company();
   const year = new Date().getFullYear();
-  const wa = c.contactWhatsapp ? `<a class="footer__chip" href="https://wa.me/${esc(c.contactWhatsapp)}" rel="noopener">${icon('chat')}<span>WhatsApp</span></a>` : '';
+  const link = (href, ic, label, attrs = '') => `<li><a href="${href}"${attrs}>${icon(ic)}<span>${label}</span></a></li>`;
   return `<footer class="footer">
  <div class="footer__inner">
-  <div class="footer__top">
+  <div class="footer__grid">
     <div class="footer__brand">
-      <span class="brand brand--footer"><span class="brand__symbol">${SYMBOL}</span><span>auronix</span></span>
-      <p class="footer__tagline">Agentes de IA para WhatsApp</p>
+      <a class="brand brand--footer" href="/" aria-label="Auronix, página inicial"><span class="brand__symbol">${SYMBOL}</span><span>auronix</span></a>
+      <p class="footer__tagline">Agentes de IA para WhatsApp, configurados com cuidado para o seu negócio.</p>
+      <p class="footer__hello">Ficou alguma dúvida? Escreva pra gente, respondemos com prazer.</p>
     </div>
-    <nav class="footer__nav" aria-label="Rodapé">
-      <a href="/#planos">${icon('tag')}<span>Planos</span></a>
-      <a href="/#duvidas">${icon('help')}<span>Dúvidas</span></a>
-      <a href="/contato">${icon('send')}<span>Contato</span></a>
-      <a href="/transparencia">${icon('shield')}<span>Transparência</span></a>
+    <nav class="footer__col" aria-labelledby="ft-site">
+      <h2 class="footer__title" id="ft-site">Auronix</h2>
+      <ul>
+        ${link('/#como-funciona', 'spark', 'Como funciona')}
+        ${link('/#planos', 'tag', 'Planos')}
+        ${link('/#sobre', 'user', 'Quem faz')}
+        ${link('/#duvidas', 'help', 'Dúvidas')}
+      </ul>
     </nav>
-  </div>
-  <div class="footer__contact">
-    <a class="footer__chip" href="mailto:${esc(c.contactEmail)}">${icon('mail')}<span>${esc(c.contactEmail)}</span></a>
-    ${wa}
-    <span class="footer__chip footer__chip--plain">${icon('lock')}<span>Pagamento seguro pela Cakto</span></span>
-  </div>
-  <div class="footer__legal">
-    <nav class="footer__legal-links" aria-label="Documentos">
-      <a href="/privacidade">Privacidade</a>
-      <a href="/cookies">Cookies</a>
-      <a href="/termos">Termos de uso</a>
-      <a href="/contrato">Modelo de contrato</a>
-      <button type="button" class="footer__prefs" data-cookie-prefs>Preferências de cookies</button>
+    <nav class="footer__col" aria-labelledby="ft-docs">
+      <h2 class="footer__title" id="ft-docs">Transparência</h2>
+      <ul>
+        ${link('/transparencia', 'shield', 'Transparência')}
+        ${link('/contrato', 'doc', 'Modelo de contrato')}
+        ${link('/termos', 'doc', 'Termos de uso')}
+        ${link('/privacidade', 'lock', 'Privacidade')}
+        ${link('/cookies', 'cookie', 'Cookies')}
+        <li><button type="button" class="footer__prefs" data-cookie-prefs>${icon('cookie')}<span>Preferências de cookies</span></button></li>
+      </ul>
     </nav>
-    <div class="footer__copy">
-      <p>© ${year} Auronix${co.name ? ` · ${esc(co.name)}` : ''}${co.doc ? ` · ${esc(co.doc)}` : ''}</p>
-      <p>Site desenvolvido por <a class="footer__dev" href="${esc(c.developer.url)}" rel="noopener">${esc(c.developer.name)}</a></p>
+    <div class="footer__col">
+      <h2 class="footer__title">Fale com a gente</h2>
+      <ul>
+        ${link(`mailto:${esc(c.contactEmail)}`, 'mail', esc(c.contactEmail))}
+        ${c.contactWhatsapp ? link(`https://wa.me/${esc(c.contactWhatsapp)}`, 'chat', 'WhatsApp', ' rel="noopener"') : ''}
+        ${link('/contato', 'send', 'Formulário de contato')}
+        <li class="footer__note">${icon('lock')}<span>Pagamento seguro pela Cakto</span></li>
+      </ul>
     </div>
+  </div>
+  <div class="footer__bottom">
+    <p>© ${year} Auronix${co.name ? ` · ${esc(co.name)}` : ''}${co.doc ? ` · ${esc(co.doc)}` : ''}</p>
+    <p>Site desenvolvido por <a class="footer__dev" href="${esc(c.developer.url)}" rel="noopener">${esc(c.developer.name)}</a></p>
   </div>
  </div>
 </footer>`;

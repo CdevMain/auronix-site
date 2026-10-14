@@ -7,7 +7,7 @@ const db = require('./db');
 const { esc } = require('./html');
 const { company } = require('./company');
 
-const VERSION = '1.0 (12/10/2026)';
+const VERSION = '1.1 (14/10/2026)';
 const TITLE = 'Contrato de prestação de serviços: agente de IA para WhatsApp';
 
 const brl = (n) => Number(n).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -34,6 +34,9 @@ function contractBody({ customer = null, plan = null, date = today() } = {}) {
   const support = idx >= 0 ? compareValue('Suporte', idx) : null;
   const meetings = idx >= 0 ? compareValue('Reuniões', idx) : null;
   const features = p ? `<ul>${p.features.map((f) => `<li>${esc(f)}</li>`).join('')}</ul>` : '';
+  const retention = p
+    ? `<strong>${brl(p.setupRetentionNumber || 0)}</strong> (plano ${esc(p.shortName || p.name)})`
+    : `o valor de configuração do plano contratado (${config.plans.map((x) => `${esc(x.shortName || x.name)}: ${brl(x.setupRetentionNumber || 0)}`).join('; ')})`;
 
   const clauses = [
     ['Partes', `<p><strong>CONTRATADA:</strong> ${esc(co.show('name'))}, nome fantasia Auronix, inscrita no CPF ou CNPJ ${esc(co.show('doc'))}, com endereço em ${esc(co.show('address'))}, e-mail ${esc(co.email)}${co.representative ? `, neste ato representada por ${esc(co.representative)}` : ''}.</p>
@@ -59,7 +62,11 @@ function contractBody({ customer = null, plan = null, date = today() } = {}) {
 <p>A responsabilidade total da CONTRATADA por danos ligados a este contrato fica limitada ao valor pago pelo CONTRATANTE nos 3 meses anteriores ao fato, exceto nos casos em que a lei não permitir essa limitação.</p>`],
     ['Proteção de dados', `<p>Em relação às conversas entre o agente e os clientes do CONTRATANTE, o CONTRATANTE é o controlador e a CONTRATADA é a operadora dos dados, nos termos da LGPD (Lei 13.709/2018). A CONTRATADA usa esses dados apenas para prestar o serviço, adota medidas de segurança e usa somente os fornecedores listados na página de transparência. Detalhes na <a href="${esc(config.publicUrl)}/privacidade">política de privacidade</a>.</p>`],
     ['Confidencialidade e propriedade', `<p>As partes manterão em sigilo as informações comerciais uma da outra. As informações do negócio do CONTRATANTE continuam sendo dele. A tecnologia, os modelos de configuração e os métodos de trabalho da CONTRATADA continuam sendo dela.</p>`],
-    ['Vigência e cancelamento', `<p>O contrato vale por prazo indeterminado, com renovação mensal e sem fidelidade. Qualquer parte pode cancelar a qualquer momento, por e-mail, e o cancelamento vale para as cobranças seguintes. Contratações online têm direito de arrependimento em até 7 dias, com devolução do valor pago, conforme o artigo 49 do Código de Defesa do Consumidor. A CONTRATADA pode suspender o serviço em caso de falta de pagamento ou uso proibido.</p>`],
+    ['Vigência e cancelamento', `<p>O contrato vale por prazo indeterminado, com renovação mensal e sem fidelidade. Qualquer parte pode cancelar a qualquer momento, por e-mail, e o cancelamento vale para as cobranças seguintes. A CONTRATADA pode suspender o serviço em caso de falta de pagamento ou uso proibido.</p>`],
+    ['Desistência e devolução de valores', `<p><strong>Direito de arrependimento.</strong> Quando o CONTRATANTE for consumidor, nos termos do Código de Defesa do Consumidor, ele pode desistir em até 7 dias da contratação online e recebe de volta o valor pago (artigo 49).</p>
+<p><strong>Devolução parcial depois do início da configuração.</strong> Fora da hipótese acima, se o CONTRATANTE cancelar depois de enviar o onboarding completo (quando a configuração inicial começa) e antes de o agente entrar no ar, a devolução do valor pago é parcial: a CONTRATADA retém ${retention} referente aos custos de criação e configuração do agente já realizados, e devolve o restante.</p>
+<p><strong>Depois que o agente entra no ar</strong>, os períodos já iniciados não são devolvidos e o cancelamento vale para as cobranças seguintes.</p>
+<p>As devoluções são feitas pela mesma forma de pagamento, pela Cakto, em até 30 dias do pedido.</p>`],
     ['Aceite eletrônico e foro', `<p>O CONTRATANTE aceita este contrato eletronicamente. O aceite registra nome, CPF ou CNPJ, e-mail, data, hora, endereço IP, navegador e o código de verificação (hash SHA-256) do texto aceito, e tem validade jurídica nos termos da Medida Provisória 2.200-2/2001, artigo 10, parágrafo 2º.</p>
 <p>Fica eleito o foro da comarca de ${esc(co.show('city'))} para resolver questões deste contrato, ressalvado o direito do consumidor de usar o foro do seu domicílio.</p>`],
   ];

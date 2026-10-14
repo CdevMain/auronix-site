@@ -180,6 +180,8 @@ function renderTransparencia() {
 <li>A cobrança é feita pela Cakto e se renova todo mês.</li>
 <li>Não há fidelidade: cancele quando quiser por ${mailLink()}. O cancelamento vale para as cobranças seguintes.</li>
 <li>Contratou e desistiu? Você tem 7 dias para desistir e receber o valor de volta (artigo 49 do Código de Defesa do Consumidor).</li>
+<li>Fora desse prazo, se você cancelar depois de enviar o onboarding e antes de o agente entrar no ar, devolvemos o valor pago menos o custo de criação do agente: ${retentionList()}.</li>
+<li>Depois que o agente está no ar, o mês já iniciado não é devolvido; o cancelamento vale para as próximas cobranças.</li>
 <li>Mudanças de preço são avisadas por e-mail com 30 dias de antecedência.</li>
 </ul>`],
       ['Como o agente funciona', `<ul>
@@ -201,6 +203,9 @@ function renderTransparencia() {
   });
 }
 
+const retentionList = () =>
+  config.plans.map((p) => `${esc(p.shortName || p.name)} ${Number(p.setupRetentionNumber || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`).join(', ');
+
 function renderTermos() {
   const co = company();
   return doc({
@@ -213,7 +218,7 @@ function renderTermos() {
       ['Planos e pagamento', `<p>Os planos, preços e limites estão na <a class="link" href="/#planos">página de planos</a> e na página de <a class="link" href="/transparencia">transparência</a>. O pagamento é mensal, pela Cakto.</p>`],
       ['Uso do site', `<p>Não é permitido usar o site para enviar conteúdo ilegal, tentar acessar áreas restritas ou atrapalhar o funcionamento. Os textos, a marca e o visual do site pertencem à Auronix.</p>`],
       ['Uso permitido do agente', `<p>O agente não pode ser usado para spam, mensagens em massa não solicitadas, conteúdo ilegal, enganoso ou que viole as políticas do WhatsApp. O descumprimento permite a suspensão do serviço.</p>`],
-      ['Cancelamento', `<p>A assinatura não tem fidelidade e pode ser cancelada a qualquer momento por ${mailLink()}. Contratações online têm 7 dias de direito de arrependimento (artigo 49 do CDC).</p>`],
+      ['Cancelamento e devolução', `<p>A assinatura não tem fidelidade e pode ser cancelada a qualquer momento por ${mailLink()}. Contratações online têm 7 dias de direito de arrependimento (artigo 49 do CDC). Fora desse prazo, se o cancelamento vier depois do envio do onboarding e antes de o agente entrar no ar, devolvemos o valor pago menos o custo de criação do agente (${retentionList()}). Depois que o agente está no ar, o mês já iniciado não é devolvido. Detalhes no <a class="link" href="/contrato">contrato</a>.</p>`],
       ['Alterações', `<p>Estes termos podem mudar. Clientes ativos são avisados por e-mail com antecedência.</p>`],
     ],
   });
